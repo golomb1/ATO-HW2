@@ -15,8 +15,8 @@ Policy::~Policy()
 
 BOOL Policy::ParsePolicyFile(__in PWCHAR PolicyFileName) {
 	using namespace std;
-	std::wifstream policyFile(PolicyFileName);
-	std:wstring line;
+	wifstream policyFile(PolicyFileName);
+	wstring line;
 
 	while (std::getline(policyFile, line)) {
 		if (!ParseLine(line, allows, deny)) {
@@ -41,10 +41,10 @@ DWORD Policy::GetFlag(std::wstring Flag) {
 }
 
 VOID Policy::FreeAll(std::vector<PolicyEntry*> allows, std::vector<PolicyEntry*> deny){
-	for (int i = 0; i < allows.size(); i++) {
+	for (unsigned int i = 0; i < allows.size(); i++) {
 		GlobalFree(allows[i]);
 	}
-	for (int i = 0; i < deny.size(); i++) {
+	for (unsigned int i = 0; i < deny.size(); i++) {
 		GlobalFree(deny[i]);
 	}
 	allows.clear();
@@ -85,7 +85,7 @@ BOOL Policy::ParseLine(std::wstring line, std::vector<PolicyEntry*> allows, std:
 BOOL Policy::HaveAccessToFile(PWCHAR file, DWORD dwDesiredAccess, DWORD dwShareMode, DWORD dwFlagsAndAttributes)
 {
 	using namespace std;
-	for (int i = 0; i < deny.size(); i++) {
+	for (unsigned int i = 0; i < deny.size(); i++) {
 		wsmatch match;
 		wregex wrx(deny.at(i)->path);
 		if (std::regex_match(file,wrx, std::regex_constants::match_default)) {
@@ -95,7 +95,7 @@ BOOL Policy::HaveAccessToFile(PWCHAR file, DWORD dwDesiredAccess, DWORD dwShareM
 			}
 		}
 	}
-	for (int i = 0; i < allows.size(); i++) {
+	for (unsigned int i = 0; i < allows.size(); i++) {
 		wsmatch match;
 		wregex wrx(allows.at(i)->path);
 		if (std::regex_match(file, wrx, std::regex_constants::match_default)) {
@@ -109,7 +109,7 @@ BOOL Policy::HaveAccessToFile(PWCHAR file, DWORD dwDesiredAccess, DWORD dwShareM
 
 BOOL Policy::HaveAccessToDirectory(PWCHAR dirrectory) {
 	using namespace std;
-	for (int i = 0; i < deny.size(); i++) {
+	for (unsigned int i = 0; i < deny.size(); i++) {
 		wsmatch match;
 		wregex wrx(deny.at(i)->path);
 		if (std::regex_match(dirrectory, wrx, std::regex_constants::match_default)) {
@@ -117,7 +117,7 @@ BOOL Policy::HaveAccessToDirectory(PWCHAR dirrectory) {
 			return FALSE;
 		}
 	}
-	for (int i = 0; i < allows.size(); i++) {
+	for (unsigned int i = 0; i < allows.size(); i++) {
 		wsmatch match;
 		wregex wrx(allows.at(i)->path);
 		if (std::regex_match(dirrectory, wrx, std::regex_constants::match_default)) {

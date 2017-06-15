@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <malloc.h>
-#include "RequestHandler.h"
 
 #define MAX_PIPE_MESSAGE		2048
 #define MESSAGE_MAX_LENGTH		1024
@@ -75,7 +74,7 @@ int _tmain(int argc, wchar_t* argv[])
 	/// Read the read handle
 	swscanf_s(argv[2], L"%p", &readPipe);
 	if (readPipe == INVALID_HANDLE_VALUE) {
-		HandleError(L"\Failed to create read Pipe! ", GetLastError());
+		HandleError(L"Failed to create read Pipe! ", GetLastError());
 		return EXIT_FAILURE;
 	}
 	/// Read the write handle

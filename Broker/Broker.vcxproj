@@ -90,7 +90,7 @@
       <SDLCheck>true</SDLCheck>
       <AdditionalUsingDirectories>
       </AdditionalUsingDirectories>
-      <AdditionalIncludeDirectories>C:\Users\tomer\Documents\Visual Studio 2015\Projects\ATO-HW2\RequestHandler;C:\Users\tomer\Documents\Visual Studio 2015\Projects\ATO-HW2\PipeIPC;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(LocalDebuggerWorkingDirectory)..\PipeIPC;$(LocalDebuggerWorkingDirectory)..\RequestHandler;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
