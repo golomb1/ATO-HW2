@@ -54,7 +54,6 @@ BOOL  PipeIPC::SendMessage(
 		return FALSE;
 	}
 	if (!WriteFile(writeHandle, Buffer, Length, &written, NULL) || written != Length) {
-		printf("Failed! tt6\n");
 		OutputDebugString(L"Could not write buffer to pipe.");
 		SetLastError(ERROR_BAD_ENVIRONMENT);
 		return FALSE;
@@ -64,9 +63,10 @@ BOOL  PipeIPC::SendMessage(
 		SetLastError(ERROR_BAD_ENVIRONMENT);
 		return FALSE;
 	}
+
 	readed = 0;
-	memcpy_s(ResponseBuffer, sizeof(IPCMessageHeader), &responseHeader, sizeof(IPCMessageHeader));
-	if (responseHeader.BodyLength > 0 && responseHeader.BodyLength < MAX_PIPE_MESSAGE - sizeof(IPCMessageHeader)) {
+	memcpy_s(ResponseBuffer, ResponseBufferSize, &responseHeader, sizeof(IPCMessageHeader));
+	if (responseHeader.BodyLength > 0 && responseHeader.BodyLength < ResponseBufferSize - sizeof(IPCMessageHeader)) {
 		if (!ReadFile(readHandle, ResponseBuffer + sizeof(IPCMessageHeader), responseHeader.BodyLength, &readed, NULL) || readed != responseHeader.BodyLength) {
 			OutputDebugString(L"Could not read IPCHeaders from pipe.");
 			SetLastError(ERROR_BAD_ENVIRONMENT);

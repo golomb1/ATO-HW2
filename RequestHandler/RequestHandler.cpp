@@ -106,11 +106,13 @@ HANDLE RequestHandler::CreateFileViaBroker(
 	if (!IPC->SendMessage(CREATE_FILE_REQUEST_TYPE, requestBody, size, MAX_PIPE_MESSAGE, result)) {
 		return INVALID_HANDLE_VALUE;
 	}
+
 	IPCMessageHeader* response = (IPCMessageHeader*)result;
 	if (response == NULL || response->Flags == ERROR_TYPE || response->BodyLength != sizeof(HANDLE)) {
 		SetLastError(response->Flags);
 		return INVALID_HANDLE_VALUE;
 	}
+
 	else {
 		HANDLE handle = *((HANDLE*)(result + sizeof(IPCMessageHeader)));
 		return handle;
@@ -130,7 +132,6 @@ BOOL RequestHandler::CreateDirectoryViaBroker(
 	if (lpSecurityAttributes != NULL) {
 		security_attribute_size = lpSecurityAttributes->nLength;
 	}
-
 	/// Prepare the request data.
 	CreateDirectoryRequest request;
 	ZeroMemory(&request, sizeof(request));
@@ -142,6 +143,7 @@ BOOL RequestHandler::CreateDirectoryViaBroker(
 		SetLastError(ERROR_MRM_FILEPATH_TOO_LONG);
 		return FALSE;
 	}
+
 	PBYTE requestBody = new byte[size];
 	ZeroMemory(requestBody, size);
 	memcpy_s(requestBody, size, &request, sizeof(CreateDirectoryRequest));
@@ -150,12 +152,12 @@ BOOL RequestHandler::CreateDirectoryViaBroker(
 		memcpy_s(requestBody + sizeof(request) + pathLength, size - sizeof(request) - pathLength,
 			lpSecurityAttributes, security_attribute_size);
 	}
+
 	byte result[MAX_PIPE_MESSAGE];
 	if (!IPC->SendMessage(CREATE_FILE_REQUEST_TYPE, requestBody, size, MAX_PIPE_MESSAGE, result)) {
 		delete requestBody;
 		return FALSE;
 	}
-	delete requestBody;
 
 	IPCMessageHeader* response = (IPCMessageHeader*)result;
 	if (response == NULL || response->Flags == ERROR_TYPE || response->BodyLength != sizeof(BOOL)) {
@@ -175,16 +177,17 @@ DWORD RequestHandler::HandleInputViaBroker(__in PWCHAR Input, __in DWORD InputSi
 	/// Create a buffer to send through the pipe.
 	DWORD totalSize = sizeof(DWORD);
 	byte result[MAX_PIPE_MESSAGE];
-	if (!IPC->SendMessage(NOTIFY_PROCESS_INITLIZATION_COMPLETE, &InputSize, totalSize, MAX_PIPE_MESSAGE, result)) {
+	if (!IPC->SendMessage(HANDLE_INPUT_REQUEST, &InputSize, totalSize, MAX_PIPE_MESSAGE, result)) {
 		return 0;
 	}
 	IPCMessageHeader* response = (IPCMessageHeader*)result;
-	if (response == NULL || response->Flags == ERROR_TYPE || response->BodyLength <= 0) {
+	if (response == NULL || response->Flags == ERROR_TYPE || response->BodyLength <= 0 || response->BodyLength >= InputSize) {
 		SetLastError(response->Flags);
 		return 0;
 	}
 	else {
-		wcscpy_s(Input, InputSize, (PWCHAR)(result + sizeof(IPCMessageHeader)));
+		DWORD size = response->BodyLength / sizeof(WCHAR);
+		wcscpy_s(Input, size, (PWCHAR)(result + sizeof(IPCMessageHeader)));
 		return response->BodyLength;
 	}
 }
@@ -193,7 +196,7 @@ BOOL RequestHandler::HandleOutputViaBroker(__in PWCHAR Message) {
 	/// Create a buffer to send through the pipe.
 	DWORD totalSize = wcslen(Message);
 	byte result[MAX_PIPE_MESSAGE];
-	if (!IPC->SendMessage(NOTIFY_PROCESS_INITLIZATION_COMPLETE, Message, totalSize, MAX_PIPE_MESSAGE, result)) {
+	if (!IPC->SendMessage(HANDLE_OUTPUT_REQUEST, Message, totalSize, MAX_PIPE_MESSAGE, result)) {
 		return FALSE;
 	}
 	IPCMessageHeader* response = (IPCMessageHeader*)result;

@@ -1,4 +1,8 @@
 LIBRARY   SANDBOXDLL  
 EXPORTS  
-   SandBoxMain   @1
-   SetParameters @2
+   SandBoxMain			@1
+   SetParameters		@2
+   SBCreateFile			@3
+   SBCreateDirectory	@4
+   SBHandleInput		@5
+   SBHandleOutput		@6

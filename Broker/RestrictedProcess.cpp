@@ -261,7 +261,7 @@ BOOL CreateRestrictedProcess(
 	/// Define the local veriables.
 	HANDLE job;
 	STARTUPINFO si;
-	DWORD flags = NORMAL_PRIORITY_CLASS | CREATE_SUSPENDED | DETACHED_PROCESS | STARTF_USESTDHANDLES;
+	DWORD flags = NORMAL_PRIORITY_CLASS | CREATE_SUSPENDED ;
 
 	/// Copy the current desktop security attributes
 	SECURITY_ATTRIBUTES sa;
@@ -298,11 +298,11 @@ BOOL CreateRestrictedProcess(
 		return FALSE;
 	}
 
-
-	HDESK hidden_desktop = OpenDesktop(DesktopName, NULL, TRUE, GENERIC_ALL);
+	DWORD desktopFlag = GENERIC_READ | DESKTOP_CREATEMENU | DESKTOP_CREATEWINDOW;
+	HDESK hidden_desktop = OpenDesktop(DesktopName, NULL, TRUE, desktopFlag);
 	if (!hidden_desktop)
 	{
-		hidden_desktop = CreateDesktop(DesktopName, NULL, NULL, 0, GENERIC_ALL, &sa);
+		hidden_desktop = CreateDesktop(DesktopName, NULL, NULL, 0, desktopFlag, &sa);
 	}
 	if (!hidden_desktop) {
 		SetError(L"Could not create new desktop.", GetLastError());
@@ -311,9 +311,6 @@ BOOL CreateRestrictedProcess(
 		CloseHandle(original_desktop);
 		return FALSE;
 	}
-	
-	
-	
 	
 	PWCHAR windowsStationName = NULL;
 	PWCHAR createdDesktopName = NULL;

@@ -21,6 +21,60 @@ RequestHandler* requestHandler					= NULL;
 CreateFileW_Orign createFileW					= NULL;
 CreateDirectory_Origin createDirectoryW			= NULL;
 
+
+
+extern "C" __declspec(dllexport) HANDLE WINAPI SBCreateFile(
+	_In_     LPCTSTR               lpFileName,
+	_In_     DWORD                 dwDesiredAccess,
+	_In_     DWORD                 dwShareMode,
+	_In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+	_In_     DWORD                 dwCreationDisposition,
+	_In_     DWORD                 dwFlagsAndAttributes,
+	_In_opt_ HANDLE                hTemplateFile) {
+	
+	if (requestHandler != NULL) {
+		return requestHandler->CreateFileViaBroker(
+			lpFileName,
+			dwDesiredAccess,
+			dwShareMode,
+			lpSecurityAttributes,
+			dwCreationDisposition,
+			dwFlagsAndAttributes,
+			hTemplateFile);
+	}
+	return INVALID_HANDLE_VALUE;
+}
+
+
+extern "C" __declspec(dllexport) BOOL WINAPI SBCreateDirectory(
+	_In_     LPCTSTR               lpPathName,
+	_In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes) {
+	if (requestHandler != NULL) {
+		return  requestHandler->CreateDirectoryViaBroker(
+			lpPathName,
+			lpSecurityAttributes);
+	}
+	return FALSE;
+}
+
+
+extern "C" __declspec(dllexport) DWORD WINAPI SBHandleInput(__in PWCHAR Input, __in DWORD InputSize) {
+	if (requestHandler != NULL) {
+		return requestHandler->HandleInputViaBroker(
+			Input,
+			InputSize);
+	}
+	return NULL;
+}
+
+
+extern "C" __declspec(dllexport) BOOL WINAPI SBHandleOutput(__in PWCHAR Message) {
+	if (requestHandler != NULL) {
+		return requestHandler->HandleOutputViaBroker(Message);
+	}
+	return NULL;
+}
+
 ///<summery>
 /// hooked function for CreateFileW (CreateFileA call this), 
 /// the hook use IPC to send the request to the broker.
@@ -114,10 +168,6 @@ DWORD SetParameters(_In_ LPVOID lpParameter) {
 VOID SandBoxMain() {
 	DWORD entry = GetEntryPoint(GetModuleHandle(NULL));
 
-	/// parse program parameter
-	int argc;
-	LPWSTR* argv = ParseProgramParameter(&argc);
-
 	/// Now we decrease permission & privilleges
 	if (!RevertToSelf()) {
 		HandleError(L"Failed to revert back to low privilenges.", GetLastError());
@@ -132,8 +182,8 @@ VOID SandBoxMain() {
 			HandleError(L"Failed to notify on finish initilization.", GetLastError());
 			TerminateProcess(GetCurrentProcess(), EXIT_FAILURE);
 		}
-		patchIAT(GetModuleHandle(NULL), "Kernel32.dll", "CreateFileW", &HookedCreateFileW, (PVOID*)&createFileW);
-		patchIAT(GetModuleHandle(NULL), "Kernel32.dll", "CreateDirectoryW", &HookedCreateDirectoryW, (PVOID*)&createDirectoryW);
+	//	patchIAT(GetModuleHandle(NULL), "Kernel32.dll", "CreateFileW", &HookedCreateFileW, (PVOID*)&createFileW);
+	//	patchIAT(GetModuleHandle(NULL), "Kernel32.dll", "CreateDirectoryW", &HookedCreateDirectoryW, (PVOID*)&createDirectoryW);
 		
 		/// Go to entry
 		((void(*)(void))entry)();

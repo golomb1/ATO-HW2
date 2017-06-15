@@ -9,259 +9,249 @@
 #include <stdint.h>
 #include <malloc.h>
 
+
+
+#define IPC_TEST_START_INDEX	3
+#define IPC_TEST_ARG_LENGTH		2
+#define	IPC_TEST_CREATE_FILE	0
+#define IPC_TEST_CREATE_DIR		1
+
+
+
+
+#define CREATEFILE				0
+#define CREATEDIR 				1
+#define INPUT	 				2
+#define OUTPUT	 				3
+
+
+
+typedef HANDLE(WINAPI * CreateFileFunc)(LPCTSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
+typedef BOOL(WINAPI *CreateDirFunc)(_In_ LPCTSTR lpPathName, _In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes);
+typedef DWORD(WINAPI* InputFunc)(__in PWCHAR Input, __in DWORD InputSize);
+typedef BOOL(WINAPI* OutputFunc)(__in PWCHAR Message);
+
+
+
+
+
+
+
+
 #define MAX_PIPE_MESSAGE		2048
 #define MESSAGE_MAX_LENGTH		1024
 #define CREATE_FILE_REQUEST		1
 #define ERROR_BUFFER			512
 #define TEST1_INDEX				5
 #define TESTS_LENGTHS			6
-void HandleError(const wchar_t* message, DWORD error) {
+
+
+VOID HandleError(HANDLE out, const wchar_t* message, DWORD error) {
 	wchar_t errorMessage[ERROR_BUFFER];
 	ZeroMemory(errorMessage, ERROR_BUFFER * sizeof(wchar_t));
 	swprintf_s(errorMessage, L"%s - %d\n", message, error);
 	OutputDebugString(errorMessage);
-	wprintf(L"%s %d\n", message, error);
+	WriteFile(out, errorMessage, wcslen(errorMessage), NULL, NULL);
+	ExitProcess(EXIT_FAILURE);
 }
 
 
+VOID Print(HANDLE out, LPCTSTR message) {
+	WriteFile(out, message, wcslen(message) * sizeof(WCHAR), NULL, NULL);
+}
 
-ULONG SetProcessUntrusted(HANDLE hProcess)
+BOOL CreateDirTest(HANDLE out, CreateDirFunc createDir, wchar_t* argv[]) {
+	if (createDir(argv[IPC_TEST_START_INDEX + IPC_TEST_CREATE_DIR], NULL)) {
+		Print(out, L"Create Dir Success.\n");
+		return TRUE;
+	}
+	HandleError(out, L"Create Dir FAILED.\n", GetLastError());
+	ExitProcess(EXIT_FAILURE);
+	return FALSE;
+}
+
+BOOL CreateFileTest(HANDLE out, CreateFileFunc createFile, wchar_t* argv[]) {
+	HANDLE file = createFile(argv[IPC_TEST_START_INDEX+ IPC_TEST_CREATE_FILE], 
+		GENERIC_READ, NULL, NULL, OPEN_ALWAYS, NULL, NULL);
+	if (file != INVALID_HANDLE_VALUE) {
+		DWORD readed = 0;
+		WCHAR character= L'a';
+		if (ReadFile(file, &character, sizeof(WCHAR), &readed, NULL) && readed == sizeof(WCHAR)) {
+			Print(out, L"Create File Success.\n");
+			return TRUE;
+		}
+	}
+	HandleError(out, L"Create File FAILED.\n", GetLastError());
+	ExitProcess(EXIT_FAILURE);
+	return FALSE;
+}
+
+	
+BOOL IPCTests(HANDLE out, FARPROC* SandBoxAPI, int argc, wchar_t* argv[]) {
+	if (argc < IPC_TEST_ARG_LENGTH + IPC_TEST_START_INDEX || SandBoxAPI == NULL) {
+		Print(out, L"Not enought arguments for IPC Tests");
+		ExitProcess(EXIT_FAILURE);
+	}
+	/// Create File tests
+	CreateFileFunc createFile = (CreateFileFunc)SandBoxAPI[CREATEFILE];
+	CreateFileTest(out, createFile, argv);
+
+	/// Create directory tests
+	CreateDirFunc createDir = (CreateDirFunc)SandBoxAPI[CREATEDIR];
+	CreateDirTest(out, createDir, argv);
+
+	/// Create input tests
+	InputFunc input = (InputFunc)SandBoxAPI[INPUT];
+	WCHAR buffer[200];
+	DWORD size = input(buffer, 200 * sizeof(WCHAR));
+	if (size < 0 || size > 12 || !wcsncmp(buffer,L"Hi SB\n",size)) {
+		Print(out, L"Input test failed.\n");
+		ExitProcess(EXIT_FAILURE);
+	}	
+
+	OutputFunc outputf = (OutputFunc)SandBoxAPI[3];
+	if (!outputf(buffer)) {
+		Print(out, L"Output test failed.\n");
+		ExitProcess(EXIT_FAILURE);
+	}
+	return TRUE;
+}
+
+BOOL TempFolderTest(HANDLE out, LPTSTR lpFolderPath)
 {
-	TOKEN_MANDATORY_LABEL tml = { { (PSID)alloca(MAX_SID_SIZE), SE_GROUP_INTEGRITY } };
-
-	ULONG cb = MAX_SID_SIZE;
-
-	HANDLE hToken;
-
-	if (!CreateWellKnownSid(WinLowLabelSid, 0, tml.Label.Sid, &cb) ||
-		!OpenProcessToken(hProcess, TOKEN_ADJUST_DEFAULT, &hToken))
+	WCHAR buffer[512];
+	ZeroMemory(buffer, 512);
+	swprintf_s(buffer, L"%s\\tmp.txt", lpFolderPath);
+	HANDLE file = CreateFile(buffer, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_ALWAYS, NULL, NULL);
+	if(file == INVALID_HANDLE_VALUE)
 	{
-		return GetLastError();
+		Print(out, L"Temp folder test failed - could not create.\n");
+		ExitProcess(EXIT_FAILURE);
 	}
-
-	ULONG dwError = NOERROR;
-	if (!SetTokenInformation(hToken, TokenIntegrityLevel, &tml, sizeof(tml)))
+	CloseHandle(file);
+	if(!DeleteFile(buffer))
 	{
-		dwError = GetLastError();
+		Print(out, L"Temp folder test failed - could not delete.\n");
+		ExitProcess(EXIT_FAILURE);
 	}
-
-	CloseHandle(hToken);
-
-	return dwError;
+	Print(out, L"Temp folder test successed.\n");
+	return TRUE;
 }
+
+
+BOOL InvalidCreateFileTest(HANDLE out, LPTSTR FileName)
+{
+	SetLastError(0);
+	HANDLE test1 = CreateFile(FileName, GENERIC_READ, NULL, NULL, CREATE_ALWAYS, NULL, NULL);
+	if (test1 == INVALID_HANDLE_VALUE && GetLastError() == ERROR_ACCESS_DENIED) {
+		Print(out, L"Invalid create file test - SUCCESSED.\n");
+	}
+	else {
+		Print(out, L"Invalid create file test - FAILED.\n");
+		ExitProcess(EXIT_FAILURE);
+	}
+	return TRUE;
+}
+
+
+BOOL InvalidCreateWindowsTest(HANDLE out)
+{
+	SetLastError(0);
+	if (!(!MessageBox(NULL, NULL, NULL, MB_OK) && GetLastError() == ERROR_ACCESS_DENIED))
+	{
+		Print(out, L"Invalied creating windows - FAILED.\n");
+		ExitProcess(EXIT_FAILURE);
+	}
+	Print(out, L"Invalied creating windows - SUCCESSED.\n");
+	return TRUE;
+}
+
+
+BOOL InvalidClipboardTests(HANDLE out)
+{
+	SetLastError(0);
+	if (!GetClipboardData(CF_TEXT) && GetLastError() == ERROR_ACCESS_DENIED) {
+		Print(out, L"Invalied Clipboard Test : Read - SUCCESSED.\n");
+	}
+	else {
+		Print(out, L"Invalied Clipboard Test : Read - FAILED.\n");
+		ExitProcess(EXIT_FAILURE);
+	}
+
+	SetLastError(0);
+	if (!SetClipboardData(CF_TEXT, NULL) && GetLastError() == ERROR_ACCESS_DENIED) {
+		Print(out, L"Invalied Clipboard Test : Write - SUCCESSED.\n");
+	}
+	else {
+		Print(out, L"Invalied Clipboard Test : Write - FAILED.\n");
+		ExitProcess(EXIT_FAILURE);
+	}
+	Print(out, L"Invalied Clipboard Test - SUCCESSED\n");
+	return TRUE;
+}
+
+BOOL InvalidMouseTest(HANDLE out, OutputFunc outFunc, InputFunc inFunc)
+{
+	SetLastError(0);
+	SetCursorPos(50, 50);
+	outFunc(L"Test Mouse - did the mouse moved to (50,50)? Y/N");
+	WCHAR buffer[20];
+	if (inFunc(buffer, 20 * sizeof(WCHAR)) && buffer[0] == L'Y') {
+		Print(out, L"Invalid Mouse Test - SUCCESSED.\n");
+	}
+	else
+	{
+		Print(out, L"Invalid Mouse Test - FAILED.\n");
+	}
+	return TRUE;
+}
+
+BOOL InvalidCD(HANDLE out)
+{
+	if (!(!SetCurrentDirectory(L"C:\\") && GetLastError() == ERROR_ACCESS_DENIED)) {
+		Print(out, L"Invalid CD - FAILED.\n");
+		ExitProcess(EXIT_FAILURE);
+	}
+	Print(out, L"Invalid CD - SUCCESSED.\n");
+	return TRUE;
+}
+
+BOOL SBTEST(HANDLE out, OutputFunc outFunc, InputFunc inFunc)
+{
+	InvalidCreateFileTest(out, L"C:\\a.txt");
+	InvalidCreateWindowsTest(out);
+	InvalidCD(out);
+	InvalidClipboardTests(out);
+	InvalidMouseTest(out, outFunc, inFunc);
+	return TRUE;
+}
+
 
 int _tmain(int argc, wchar_t* argv[])
 {
-	HANDLE writePipe;
-	HANDLE readPipe;
-	OutputDebugString(L"((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((\n\n\n\n\n\n\n\n\n.");
-	printf("((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((\n\n\n\n\n\n");
-	printf("WINSTATION is %p and windows is %p\n\n", GetProcessWindowStation(), GetThreadDesktop(GetCurrentThreadId()));
-	
-	ULONG e = SetProcessUntrusted(GetCurrentProcess());
-	if (e == NO_ERROR) {
-		printf("dgkjvdkfjkb Faile:feigrljhlidrjhljrhlFAILLLLLLLLLLLLLLLLLLLL\n");
-	}
-	else {
-		printf(":) good for me%d\n",e);
-	}
-
-	
 	if (argc < 3) {
-		OutputDebugString(L"Not enough arguments.");
-		return EXIT_FAILURE;
+		ExitProcess(EXIT_FAILURE);
 	}
-	/// Read the read handle
-	swscanf_s(argv[2], L"%p", &readPipe);
-	if (readPipe == INVALID_HANDLE_VALUE) {
-		HandleError(L"Failed to create read Pipe! ", GetLastError());
-		return EXIT_FAILURE;
-	}
-	/// Read the write handle
-	swscanf_s(argv[1], L"%p", &writePipe);
-	if (writePipe == INVALID_HANDLE_VALUE) {
-		HandleError(L"Failed to create write Pipe! ",GetLastError());
-		return EXIT_FAILURE;
+	HANDLE out;
+	swscanf_s(argv[2], L"%p", &out);
+
+	///***************************************************************///
+	///						Start IPC Tests
+	///***************************************************************///
+	HMODULE sandboxAPI = GetModuleHandle(L"SandboxDLL.dll");
+	if (sandboxAPI == 0) {
+		Print(out, L"Could not get sanbox api.\n");
+		ExitProcess(EXIT_FAILURE);
 	}
 
-	/// Now we decrease permission & privilleges
-	if (!RevertToSelf()) {
-		HandleError(L"Failed to revert back to low privilenges.", GetLastError());
-		return EXIT_FAILURE;
-	}
+	FARPROC SandBoxAPI[4];
+	SandBoxAPI[CREATEFILE] = GetProcAddress(sandboxAPI, "SBCreateFile");
+	SandBoxAPI[CREATEDIR]  = GetProcAddress(sandboxAPI, "SBCreateDirectory");
+	SandBoxAPI[INPUT]      = GetProcAddress(sandboxAPI, "SBHandleInput");
+	SandBoxAPI[OUTPUT]     = GetProcAddress(sandboxAPI, "SBHandleOutput");
 
-	/// restrict to untrusted.
-	if (argc > TESTS_LENGTHS) {
-		HANDLE test;
-		DWORD a;
-		swscanf_s(argv[3], L"%p", &test);
-		WriteFile(test, L"Hgtsfdt\n", 8 * sizeof(wchar_t), &a, NULL);
-		{
-			wchar_t b[4098];
-			wchar_t ou[4098];
-			DWORD a;
-			GetUserObjectInformation(GetProcessWindowStation(), UOI_NAME, b, 4098 * 2, &a);
-			swprintf_s(ou, L"|||||||||| %s \n", b);
-			WriteFile(test, ou, wcslen(ou) * sizeof(wchar_t), &a, NULL);
-			WriteFile(test, L"\n", 1 * sizeof(wchar_t), &a, NULL);
-			GetUserObjectInformation(GetThreadDesktop(GetCurrentThreadId()), UOI_NAME, b, 4098 * 2, &a);
-			swprintf_s(ou, L"|||||||||| %s \n", b);
-			wprintf(L"|||||||||| %s \n", b);
-			WriteFile(test, ou, wcslen(ou) *sizeof(wchar_t), &a, NULL);
-		}
-		//ExitProcess(0);
-		Sleep(6000);
-
-		/// Test 1 - Try to open a file in an authorizely.
-		SetLastError(0);
-		HANDLE test1 = CreateFile(argv[TEST1_INDEX], GENERIC_READ, NULL, NULL, CREATE_ALWAYS, NULL, NULL);
-		if (test1 == INVALID_HANDLE_VALUE && GetLastError() == ERROR_ACCESS_DENIED) {
-			HandleError(L"TEST 1 PASS", GetLastError());
-		}
-		else {
-			HandleError(L"TEST 1 FAILED", GetLastError());
-			return EXIT_FAILURE;
-		}
-
-		/// Test 2 - Try to open a windows authorizely.
-		SetLastError(0);
-		if (!MessageBox(NULL, NULL, NULL, MB_OK) && GetLastError() == ERROR_ACCESS_DENIED)
-		{
-			HandleError(L"TEST 2 PASS", GetLastError());
-		}
-		else {
-			HandleError(L"TEST 2 FAILED", GetLastError());
-			return EXIT_FAILURE;
-		}
-
-		// Test 3 - Read from clipboard
-		SetLastError(0);
-		if (!GetClipboardData(CF_TEXT) && GetLastError() == ERROR_ACCESS_DENIED) {
-			HandleError(L"TEST 3 PASS", GetLastError());
-		}
-		else {
-			HandleError(L"TEST 3 FAILED", GetLastError());
-			return EXIT_FAILURE;
-		}
-
-		// Test 4 - Write to clipboard
-		SetLastError(0);
-		if (!SetClipboardData(CF_TEXT,NULL) && GetLastError() == ERROR_ACCESS_DENIED) {
-			HandleError(L"TEST 4 PASS", GetLastError());
-		}
-		else {
-			HandleError(L"TEST 4 FAILED", GetLastError());
-			return EXIT_FAILURE;
-		}
-
-		// Test 5 - Write to clipboard
-		POINT p = { 0 };
-		POINT p2 = { 0 };
-		SetLastError(0);
-		SetCursorPos(50, 50);
-		GetCursorPos(&p);
-		if (!(p.x == 50 && p.y == 50))
-		{
-			HandleError(L"TEST 5 PASS", GetLastError());
-		}
-		else {
-			HandleError(L"TEST 5 FAILED", GetLastError());
-			return EXIT_FAILURE;
-		}
-
-		// Test 6 - Write to clipboard
-		SetLastError(0);
-		printf("%d", p.x);
-		
-		if (!GetCursorPos(&p2)){// && GetLastError() == ERROR_ACCESS_DENIED) {
-			HandleError(L"TEST 6 PASS", GetLastError());
-			WriteFile(test, L"H:}", 3 * sizeof(wchar_t), &a, NULL);
-
-		}
-		else {
-			HandleError(L"TEST 6 FAILED", GetLastError());
-			WriteFile(test, L"B:((", 4 * sizeof(wchar_t), &a, NULL);
-			wchar_t b[100];
-			ZeroMemory(b, 100 * sizeof(wchar_t));
-			int l = swprintf_s(b, L"%d %d", p.x, p2.x);
-			WriteFile(test, b, wcslen(b) * sizeof(wchar_t), &a, NULL);
-			return EXIT_FAILURE;
-		}
-		wchar_t b[100];
-		int l = swprintf_s(b, L"%d %d", p.x, p2.x);
-		WriteFile(test, b, wcslen(b) * sizeof(wchar_t), &a, NULL);
-
-
-
-		
-	}
-
-	Sleep(60000);
-
-
-
-
-
-
-
-
-
-
-	/*
-	wprintf(L"GOT HERE!!!!\n");
-	wprintf(L"111: %s\n", argv[1]);
-	Sleep(100);
-	HANDLE writePipe;
-	HANDLE readPipe;
-
-	HANDLE test;
-	swscanf_s(argv[1], L"%p", &writePipe);
-	if (writePipe == INVALID_HANDLE_VALUE) {
-		printf("\t\tFailed to create Pipe! %d\n", GetLastError());
-		return 1;
-	}
-	swscanf_s(argv[2], L"%p", &readPipe);
-	if (readPipe == INVALID_HANDLE_VALUE) {
-		printf("\t\tFailed to create Pipe! %d\n", GetLastError());
-		return 1;
-	}
-
-	swscanf_s(argv[3], L"%p", &test);
-
-	RevertToSelf();
-	wprintf(L"%s\n", argv[1]);
-	
-	wprintf(L" :))))) VVVVVVV %d\n", wcslen(L"C:\\Users\\tomer\\Documents\\visual studio 2015\\Projects\\ATO-HW2\\Debug\\a.txt") * sizeof(wchar_t));
-	//HANDLE file1 = CreateFileViaBroker(readPipe, writePipe, L"C:\\Users\\tomer\\Documents\\visual studio 2015\\Projects\\ATO-HW2\\Debug\\a.txt", GENERIC_READ, NULL, NULL, CREATE_ALWAYS, NULL, NULL);
-	
-	RequestHandler p(NULL, readPipe, writePipe);
-	HANDLE file1 = p.CreateFileViaBroker(L"C:\\Users\\tomer\\Documents\\visual studio 2015\\Projects\\ATO-HW2\\Broker\\b.txt", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	
-	if (file1 == INVALID_HANDLE_VALUE) {
-		wprintf(L"\n===========\n");
-	}
-	else {
-		DWORD a;
-		WriteFile(test, L"Hi", 2 * sizeof(wchar_t), &a, NULL);
-		WriteFile(file1, L"Hi", 2 * sizeof(wchar_t), &a, NULL);
-		wprintf(L"]]]]]]]]]]]]]] %d %d %p\n\n", GetLastError(), a,file1);
-	}
-	wprintf(L" :))))) qqqqqqqqq");
-	HANDLE file = CreateFile(L"C:\\bdlog.txt", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
-	if (file == INVALID_HANDLE_VALUE && GetLastError() == 5) {
-		wprintf(L"\n^^^^^^\n");
-	}
-	else{
-		wprintf(L"\n------\n");
-	}
-	if (SetCurrentDirectory(L"C:\\")) {
-		wprintf(L"\n------\n");
-	}
-	else {
-		wprintf(L"\n^^^^^^\n");
-	}
-	Sleep(100000);
-
-    return 0;*/
+	IPCTests(out, SandBoxAPI, argc, argv);
+	TempFolderTest(out, argv[1]);
+	SBTEST(out,(OutputFunc)SandBoxAPI[OUTPUT], (InputFunc)SandBoxAPI[INPUT]);
+	((OutputFunc)SandBoxAPI[OUTPUT])(L"ALL FINISHED!");
 }
-

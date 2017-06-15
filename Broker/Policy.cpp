@@ -14,6 +14,7 @@ Policy::~Policy()
 
 
 BOOL Policy::ParsePolicyFile(__in PWCHAR PolicyFileName) {
+	return TRUE;
 	using namespace std;
 	wifstream policyFile(PolicyFileName);
 	wstring line;
@@ -84,6 +85,7 @@ BOOL Policy::ParseLine(std::wstring line, std::vector<PolicyEntry*> allows, std:
 
 BOOL Policy::HaveAccessToFile(PWCHAR file, DWORD dwDesiredAccess, DWORD dwShareMode, DWORD dwFlagsAndAttributes)
 {
+	return TRUE;
 	using namespace std;
 	for (unsigned int i = 0; i < deny.size(); i++) {
 		wsmatch match;
@@ -108,6 +110,7 @@ BOOL Policy::HaveAccessToFile(PWCHAR file, DWORD dwDesiredAccess, DWORD dwShareM
 }
 
 BOOL Policy::HaveAccessToDirectory(PWCHAR dirrectory) {
+	return TRUE;
 	using namespace std;
 	for (unsigned int i = 0; i < deny.size(); i++) {
 		wsmatch match;

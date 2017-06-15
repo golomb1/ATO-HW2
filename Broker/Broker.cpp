@@ -1,6 +1,5 @@
 // Broker.cpp : Defines the entry point for the console application.
 //
-
 #include "stdafx.h"
 #include <windows.h>
 #include <stdio.h>
@@ -16,13 +15,16 @@
 #include "RequestHandler.h"
 #include "Policy.h"
 
+
+
 typedef struct {
 	PROCESS_INFORMATION ChildProcInfo;
 	Policy*				pPolicy;
 } IPCData;
 
-#define			NUM_OF_INHERITED_HANDLES	2
+#define			NUM_OF_INHERITED_HANDLES	3
 #define			MAX_DESKTOP_NAME_SIZE		256
+#define			TEMP_DIRECTORY_PATH_LENGTH	1024
 
 ///************************************************************///
 ///						Broker API operations
@@ -158,9 +160,10 @@ PVOID BrokerHandleInput(__in PVOID Data, __in PBYTE request, __in DWORD lentgh, 
 	if (lentgh >= sizeof(DWORD)) {
 		DWORD inputSize = *((PDWORD)request);
 		PWCHAR result = (PWCHAR)GlobalAlloc(GPTR, inputSize);
+		ZeroMemory(result, inputSize);
 		printf("Sandbox ask for input: ");
 		std::wcin.get(result, inputSize);
-		*size = inputSize;
+		*size = (wcslen(result) + 1)*sizeof(WCHAR);
 		return result;
 	}
 	*size = 0;
@@ -213,10 +216,21 @@ int _tmain(int argc, wchar_t* argv[])
 
 
 	/// Create untrusted directory
-	if (!CreateUntrustedFolder(argv[2])) {
-		printf("Could not create folder for sandbox, error was: %d.\nExiting...", GetLastError());
+	WCHAR TempDirectory[TEMP_DIRECTORY_PATH_LENGTH];
+	ZeroMemory(TempDirectory, TEMP_DIRECTORY_PATH_LENGTH * sizeof(WCHAR));
+	
+	DWORD TempDirectoryLength = GetFullPathName(argv[2],
+		TEMP_DIRECTORY_PATH_LENGTH, TempDirectory, NULL);
+	if (TempDirectoryLength == 0)
+	{
+		printf("Could not Find the full path for the given sandbox directory, error was: %d.\nExiting...", GetLastError());
 		ExitProcess(EXIT_FAILURE);
 	}
+	CreateUntrustedFolder(TempDirectory);
+	/*if (!) {
+		printf("Could not create folder for sandbox, error was: %d.\nExiting...", GetLastError());
+		ExitProcess(EXIT_FAILURE);
+	}*/
 
 	/// Read Policy file
 	DataForIPC.pPolicy = new Policy();
@@ -230,11 +244,17 @@ int _tmain(int argc, wchar_t* argv[])
 	PWCHAR CmdLine;
 	WCHAR  CmdLineBuf[1024];
 	
+	SECURITY_ATTRIBUTES outSa;
+	ZeroMemory(&outSa, sizeof(SECURITY_ATTRIBUTES));
+	outSa.bInheritHandle = TRUE;
+	outSa.nLength = sizeof(outSa);
+	HANDLE out = CreateFile(L"test_out", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &outSa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	/// Create the process command line
-	if (_snwprintf_s(CmdLineBuf, 1023, L"\"%s\" %s", argv[1], argv[2]) < 0)
+	/// TODO
+	if (_snwprintf_s(CmdLineBuf, 1023, L"\"%s\" %s %p %s %s 0", argv[1], TempDirectory, out, L"T.txt", L"T") < 0)
 	{
 		printf("Command line argument too long, Error was: %d\nExiting...", GetLastError());
-		RemoveDirectory(argv[2]);
+		RemoveDirectory(TempDirectory);
 		delete DataForIPC.pPolicy;
 		ExitProcess(EXIT_FAILURE);
 	}
@@ -247,17 +267,18 @@ int _tmain(int argc, wchar_t* argv[])
 	HANDLE inheritanceHandles[NUM_OF_INHERITED_HANDLES];
 	inheritanceHandles[0] = ChildReadHandle;
 	inheritanceHandles[1] = ChildWriteHandle;
+	inheritanceHandles[2] = out;
 	
 	if (PrimaryToken == INVALID_HANDLE_VALUE) {
 		printf("Could not create primary token, Error was: %d\nExiting...", GetLastError());
-		RemoveDirectory(argv[2]);
+		RemoveDirectory(TempDirectory);
 		delete DataForIPC.pPolicy;
 		ExitProcess(EXIT_FAILURE);
 	}
 	if (InitilizationToken == INVALID_HANDLE_VALUE || 
 		!DuplicateToken(InitilizationToken, SecurityImpersonation, &impersonation_token)) {
 		printf("Could not create Initilization token, Error was: %d\nExiting...", GetLastError());
-		RemoveDirectory(argv[2]);
+		RemoveDirectory(TempDirectory);
 		ExitProcess(EXIT_FAILURE);
 	}
 
@@ -287,11 +308,11 @@ int _tmain(int argc, wchar_t* argv[])
 
 	if(!CreateRestrictedProcess(
 			PrimaryToken, impersonation_token, DesktopName, NUM_OF_INHERITED_HANDLES, 
-			inheritanceHandles, AppPath, CmdLine, argv[2], L"C:\\SandboxDLL.dll", sizeof(WCHAR)*wcslen(L"C:\\SandboxDLL.dll"),
+			inheritanceHandles, AppPath, CmdLine, TempDirectory, L"C:\\SandboxDLL.dll", sizeof(WCHAR)*wcslen(L"C:\\SandboxDLL.dll"),
 		Entry, SetParam, data, &(DataForIPC.ChildProcInfo)))
 	{
 		printf("Created restricted process failed %d\n", GetLastError()); 
-		RemoveDirectory(argv[2]);
+		RemoveDirectory(TempDirectory);
 		delete DataForIPC.pPolicy;
 		ExitProcess(EXIT_FAILURE);
 	}
@@ -302,7 +323,7 @@ int _tmain(int argc, wchar_t* argv[])
 		ipc.HandleMessage();
 		GetExitCodeProcess(DataForIPC.ChildProcInfo.hProcess, &processExitCode);
 	}
-	RemoveDirectory(argv[2]);
+	RemoveDirectory(TempDirectory);
 	delete DataForIPC.pPolicy;
 	ExitProcess(EXIT_SUCCESS);
 }
