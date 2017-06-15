@@ -1,0 +1,4 @@
+LIBRARY   SANDBOXDLL  
+EXPORTS  
+   SandBoxMain   @1
+   SetParameters @2
