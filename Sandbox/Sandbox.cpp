@@ -129,6 +129,7 @@ HANDLE TempFolderTest(LPTSTR lpFolderPath)
 	}
 	//Print(out, L"Temp folder test successed.\n");
 	swprintf_s(buffer, L"%s\\test_result.txt", lpFolderPath); 
+	DeleteFile(buffer);
 	file = CreateFile(buffer, GENERIC_READ | GENERIC_WRITE, NULL, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 	if (file == INVALID_HANDLE_VALUE)
 	{
