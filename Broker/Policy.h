@@ -2,9 +2,6 @@
 #include <Windows.h>
 #include <vector>
 #include <stdio.h>
-#include <string>
-#include <fstream>
-#include <iostream>
 #include <regex> 
 
 
@@ -19,9 +16,9 @@ private:
 	std::vector<PolicyEntry*> deny;
 	std::vector<PolicyEntry*> allows;
 
-	DWORD GetFlag(std::wstring Flag);
-	BOOL ParseLine(std::wstring line, std::vector<PolicyEntry*> allows, std::vector<PolicyEntry*> deny);
-	VOID FreeAll(std::vector<PolicyEntry*> allows, std::vector<PolicyEntry*> deny);
+	static DWORD GetFlag(std::wstring Flag);
+	static BOOL ParseLine(std::wstring line, std::vector<PolicyEntry*> allows, std::vector<PolicyEntry*> deny);
+	static VOID FreeAll(std::vector<PolicyEntry*> allows, std::vector<PolicyEntry*> deny);
 
 public:
 	Policy();

@@ -1,13 +1,19 @@
 #include "stdafx.h"
 #include "RestrictedProcess.h"
-
+#include <stdio.h>
+#include <assert.h>
+#include <Sddl.h>
+#include <aclapi.h>
+#include "Utils.h"
+#include "ErrorMessage.h"
+#include "RemoteUtils.h"
 
 
 BOOL CreateUntrustedFolder(__in LPCWSTR DirectoryName)
 {
 	ULONG cb = MAX_SID_SIZE;
 	PSID UntrustedSid = (PSID)alloca(MAX_SID_SIZE);
-	if (CreateWellKnownSid(WinUntrustedLabelSid, 0, UntrustedSid, &cb))
+	if (CreateWellKnownSid(WinUntrustedLabelSid, nullptr, UntrustedSid, &cb))
 	{
 		PACL Sacl = (PACL)alloca(cb += sizeof(ACL) + sizeof(ACE_HEADER) + sizeof(ACCESS_MASK));
 		InitializeAcl(Sacl, cb, ACL_REVISION);
@@ -16,11 +22,11 @@ BOOL CreateUntrustedFolder(__in LPCWSTR DirectoryName)
 			SECURITY_ATTRIBUTES sa;
 			SECURITY_DESCRIPTOR sd;
 			InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
-			SetSecurityDescriptorDacl(&sd, TRUE, NULL, FALSE);
+			SetSecurityDescriptorDacl(&sd, TRUE, nullptr, FALSE);
 			SetSecurityDescriptorSacl(&sd, TRUE, Sacl, FALSE);
 			sa.lpSecurityDescriptor = &sd;
 			sa.bInheritHandle = TRUE;
-			sa.nLength = sizeof(sa);
+			sa.nLength = sizeof sa;
 			return CreateDirectory(DirectoryName, &sa);
 		}
 	}
@@ -34,7 +40,7 @@ ULONG SetProcessUntrusted(__in HANDLE hProcess)
 	TOKEN_MANDATORY_LABEL tml = { { (PSID)alloca(MAX_SID_SIZE), SE_GROUP_INTEGRITY } };
 	ULONG cb = MAX_SID_SIZE;
 	HANDLE hToken;
-	if (!CreateWellKnownSid(WinUntrustedLabelSid, 0, tml.Label.Sid, &cb)) {
+	if (!CreateWellKnownSid(WinUntrustedLabelSid, nullptr, tml.Label.Sid, &cb)) {
 		SetError(L"Could not create untrusted sid.", GetLastError());
 		return GetLastError();
 	}
@@ -44,7 +50,7 @@ ULONG SetProcessUntrusted(__in HANDLE hProcess)
 		return GetLastError();
 	}
 	ULONG dwError = NOERROR;
-	if (!SetTokenInformation(hToken, TokenIntegrityLevel, &tml, sizeof(tml)))
+	if (!SetTokenInformation(hToken, TokenIntegrityLevel, &tml, sizeof tml))
 	{
 		SetError(L"Could not set mandatory level.", GetLastError());
 		return GetLastError();
@@ -56,7 +62,7 @@ ULONG SetProcessUntrusted(__in HANDLE hProcess)
 
 HANDLE CreateRestrictedJobObject() {
 	/// Local variables, initilization is near use.
-	int err = 0;
+	int err;
 	SECURITY_ATTRIBUTES security_attributes;
 	JOBOBJECT_BASIC_UI_RESTRICTIONS uiRestriction;
 	JOBOBJECT_BASIC_LIMIT_INFORMATION basicLimits;
@@ -66,7 +72,7 @@ HANDLE CreateRestrictedJobObject() {
 	ZeroMemory(&security_attributes, sizeof(SECURITY_ATTRIBUTES));
 	security_attributes.nLength = sizeof(SECURITY_ATTRIBUTES);
 	security_attributes.bInheritHandle = FALSE;
-	HANDLE job = CreateJobObject(&security_attributes, NULL);
+	HANDLE job = CreateJobObject(&security_attributes, nullptr);
 	if (!job) {
 		SetError(L"Could not create job object", GetLastError());
 		return INVALID_HANDLE_VALUE;
@@ -118,24 +124,24 @@ BOOL ExecuteRemoteThreadBeforeInitilization(
 	__in	HANDLE					InitilizationToken,
 	__out	PDWORD					phLibModule)
 {
-	HANDLE baseAddress = VirtualAllocEx(processHandle, NULL, paramSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	HANDLE baseAddress = VirtualAllocEx(processHandle, nullptr, paramSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if (baseAddress == INVALID_HANDLE_VALUE) {
 		SetError(L"Could not allocate memory remotly.", GetLastError());
 		return FALSE;
 	}
-	if (!WriteProcessMemory(processHandle, baseAddress, param, paramSize, NULL)) {
+	if (!WriteProcessMemory(processHandle, baseAddress, param, paramSize, nullptr)) {
 		SetError(L"Could not write paramters remotly.", GetLastError());
 		return FALSE;
 	}
 
 	HANDLE threadHandle = CreateRemoteThread(
 		processHandle,
-		NULL,
+		nullptr,
 		0,
 		function,
 		baseAddress,
 		CREATE_SUSPENDED,
-		0);
+		nullptr);
 	if (threadHandle == INVALID_HANDLE_VALUE) {
 		SetError(L"Could not create thread remotly.", GetLastError());
 		return FALSE;
@@ -172,20 +178,20 @@ BOOL LoadNewEntry(
 	/// Part 1 - Inject sandbox dll
 	CONTEXT thread_context;
 	HANDLE processHandle = OpenProcess(PROCESS_ALL_ACCESS | PROCESS_VM_OPERATION | PROCESS_VM_WRITE, FALSE, (*ProcInfo).dwProcessId);
-	if (processHandle == NULL)
+	if (processHandle == nullptr)
 	{
 		SetError(L"Could not open current process.", GetLastError());
 		return FALSE;
 	}
 	HMODULE dllHandle = GetModuleHandle(L"Kernel32.dll");
-	if (dllHandle == NULL)
+	if (dllHandle == nullptr)
 	{
 		SetError(L"Could not open kernel32 dll.", GetLastError());
 		return FALSE;
 	}
 	
 	HANDLE loadLibraryAddress = GetProcAddress(dllHandle, "LoadLibraryW");
-	if (loadLibraryAddress == NULL)
+	if (loadLibraryAddress == nullptr)
 	{
 		SetError(L"Could not find LoadLibraryW.", GetLastError());
 		return FALSE;
@@ -222,7 +228,7 @@ BOOL LoadNewEntry(
 		Entry.FunctionNameInDll,
 		Entry.FunctionOrdinalInDll,
 		Entry.FunctionIsOrdinal);
-	if (newMain == 0) {
+	if (newMain == nullptr) {
 		SetError(L"Could not get new main function.", GetLastError());
 		return FALSE;
 	}
@@ -248,6 +254,8 @@ BOOL CreateRestrictedProcess(
 	__in		PWCHAR			DesktopName,
 	__in		DWORD			NumOfInheritedHandles,
 	__in_opt	PHANDLE			InheritedHandles,
+	__in_opt	HANDLE			In,
+	__in_opt	HANDLE			Out,
 	__in		PWCHAR			AppPath,
 	__in		PWCHAR			CommandLine, 
 	__in		PWCHAR			Directory,
@@ -258,10 +266,8 @@ BOOL CreateRestrictedProcess(
 	__in		DataToChild		ChildData,
 	__out		PPROCESS_INFORMATION ProcInfo)
 {
-	/// Define the local veriables.
-	HANDLE job;
 	STARTUPINFO si;
-	DWORD flags = NORMAL_PRIORITY_CLASS | CREATE_SUSPENDED ;
+	DWORD flags = NORMAL_PRIORITY_CLASS | CREATE_SUSPENDED | DETACHED_PROCESS | CREATE_UNICODE_ENVIRONMENT | STARTF_USESTDHANDLES;
 
 	/// Copy the current desktop security attributes
 	SECURITY_ATTRIBUTES sa;
@@ -271,7 +277,7 @@ BOOL CreateRestrictedProcess(
 		return FALSE;
 	}
 	HDESK original_desktop = GetThreadDesktop(GetCurrentThreadId());
-	if (original_desktop == NULL) {
+	if (original_desktop == nullptr) {
 		SetError(L"Could not get the current thread desktop.", GetLastError());
 		return FALSE;
 	}
@@ -283,9 +289,9 @@ BOOL CreateRestrictedProcess(
 
 	/// Open a new Desktop in a new Workstation.
 	HWINSTA current_winsta = GetProcessWindowStation();
-	HWINSTA winsta = CreateWindowStation(NULL, TRUE, GENERIC_ALL, &sa);
+	HWINSTA winsta = CreateWindowStation(nullptr, TRUE, GENERIC_ALL, &sa);
 	if (!winsta) {
-		winsta = OpenWindowStation(NULL, TRUE, GENERIC_ALL);
+		winsta = OpenWindowStation(nullptr, TRUE, GENERIC_ALL);
 	}
 	if (!winsta) {
 		SetError(L"Could not create a new windows station.", GetLastError());
@@ -302,7 +308,7 @@ BOOL CreateRestrictedProcess(
 	HDESK hidden_desktop = OpenDesktop(DesktopName, NULL, TRUE, desktopFlag);
 	if (!hidden_desktop)
 	{
-		hidden_desktop = CreateDesktop(DesktopName, NULL, NULL, 0, desktopFlag, &sa);
+		hidden_desktop = CreateDesktop(DesktopName, nullptr, nullptr, 0, desktopFlag, &sa);
 	}
 	if (!hidden_desktop) {
 		SetError(L"Could not create new desktop.", GetLastError());
@@ -312,11 +318,11 @@ BOOL CreateRestrictedProcess(
 		return FALSE;
 	}
 	
-	PWCHAR windowsStationName = NULL;
-	PWCHAR createdDesktopName = NULL;
+	PWCHAR windowsStationName;
+	PWCHAR createdDesktopName;
 	DWORD windowsStationNameSize = 0;
 	DWORD createdDesktopNameSize = 0;
-	if (!GetUserObjectInformation(winsta, UOI_NAME, NULL, 0, &windowsStationNameSize) && 
+	if (!GetUserObjectInformation(winsta, UOI_NAME, nullptr, 0, &windowsStationNameSize) && 
 			GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
 		SetError(L"Could not get name of new windows station.", GetLastError());
 		CloseHandle(hidden_desktop);
@@ -325,7 +331,7 @@ BOOL CreateRestrictedProcess(
 		CloseHandle(original_desktop);
 		return FALSE;
 	}
-	if (!GetUserObjectInformation(hidden_desktop, UOI_NAME, NULL, 0, &createdDesktopNameSize) &&
+	if (!GetUserObjectInformation(hidden_desktop, UOI_NAME, nullptr, 0, &createdDesktopNameSize) &&
 		GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
 		SetError(L"Could not get name of new windows station.", GetLastError());
 		CloseHandle(hidden_desktop);
@@ -365,27 +371,36 @@ BOOL CreateRestrictedProcess(
 	PWCHAR desktopNameForCreateProcess = new WCHAR[windowsStationNameSize + 1 + createdDesktopNameSize];
 	swprintf_s(desktopNameForCreateProcess, windowsStationNameSize + 1 + createdDesktopNameSize, 
 		L"%s\\%s", windowsStationName, createdDesktopName);
-	delete windowsStationName;
-	delete createdDesktopName;
+	delete[] windowsStationName;
+	delete[] createdDesktopName;
 
 	/// Finish with the other windows station, return back.
 	SetProcessWindowStation(current_winsta);
 	
 	/// Set the current desktop (the real one) with denied to NULL SID.
 	PSID nullSid;
-	ConvertStringSidToSid(L"S-1-0-0", &(nullSid));
-	//BOOL s = DenySidFromDesktop(hidden_desktop, nullSid);
+	ConvertStringSidToSid(L"S-1-0-0", &nullSid);
+	/*if (!AddSidToDesktop(hidden_desktop, nullSid, FALSE))
+	{
+		//SetError(L"Could not set new desktop sid.", GetLastError());
+		//return FALSE;
+	}
+	if(!AddSidToDesktop(GetThreadDesktop(GetCurrentThreadId()), nullSid, TRUE))
+	{
+		SetError(L"Could not set current desktop sid.", GetLastError());
+		return FALSE;
+	}*/
 
 	/// Create the process
 	ZeroMemory(&si, sizeof(STARTUPINFO));
-	si.cb = sizeof(si);
+	si.cb = sizeof si;
 	si.lpDesktop  = desktopNameForCreateProcess;
 	si.hStdError  = INVALID_HANDLE_VALUE;
-	si.hStdInput  = INVALID_HANDLE_VALUE;
-	si.hStdOutput = INVALID_HANDLE_VALUE;
+	si.hStdInput  = In;
+	si.hStdOutput = Out;
 	
 
-	job = CreateRestrictedJobObject();
+	HANDLE job = CreateRestrictedJobObject();
 	if (job == INVALID_HANDLE_VALUE) {
 		return FALSE;
 	}
@@ -394,23 +409,23 @@ BOOL CreateRestrictedProcess(
 	if (!CreateProcessAsUserWithExplicitHandles(PrimaryToken, // the process token
 		AppPath,				// application path
 		CommandLine,			// command line - 1st token is executable
-		NULL,					// default security attirubtes on process
-		NULL,					// default security attributes on thread
+		nullptr,					// default security attirubtes on process
+		nullptr,					// default security attributes on thread
 		TRUE,					// inherit handles from parent
 		flags,					// use normal priority class
-		NULL,					// inherit environment from parent
+		nullptr,					// inherit environment from parent
 		Directory,				// use the current directory of parent
 		&si,					// pointer to the STARTUPINFO
 		ProcInfo ,				// pointer to the PROCESSINFROMATION
 		NumOfInheritedHandles,
 		InheritedHandles))
 	{
-		delete desktopNameForCreateProcess;
+		delete[] desktopNameForCreateProcess;
 		TerminateJobObject(job, EXIT_FAILURE);
 		CloseHandle(job);
 		return FALSE;
 	}
-	delete desktopNameForCreateProcess;
+	delete[] desktopNameForCreateProcess;
 
 	/// Assign process to job
 	if (!AssignProcessToJobObject(job, (*ProcInfo).hProcess)) {
@@ -429,7 +444,7 @@ BOOL CreateRestrictedProcess(
 	}
 
 	/// Change the process token for initilization.
-	if (!SetThreadToken(&((*ProcInfo).hThread), InitilizationToken)) {
+	if (!SetThreadToken(&(*ProcInfo).hThread, InitilizationToken)) {
 		SetError(L"Could not change process's token", GetLastError());
 		TerminateProcess((*ProcInfo).hProcess, EXIT_FAILURE);
 		TerminateJobObject(job, EXIT_FAILURE);
@@ -442,18 +457,19 @@ BOOL CreateRestrictedProcess(
 	return TRUE;
 }
 
+
+
 DWORD GetSidsToDisable(
 	__in	PSID_AND_ATTRIBUTES SidsToDisable,
 	__in	DWORD Bufsize,
 	__in	PTOKEN_GROUPS pTokenGroups,
 	__in	BOOL FullRestriction)
 {
-	DWORD i;
 	DWORD DisableSidCount = 0;
 	SID EveryoneSid = { 1, 1, SECURITY_WORLD_SID_AUTHORITY, SECURITY_WORLD_RID };
 
 	/// Firstly check the arguments
-	if (SidsToDisable == NULL || pTokenGroups == NULL ||
+	if (SidsToDisable == nullptr || pTokenGroups == nullptr ||
 		Bufsize < pTokenGroups->GroupCount * sizeof(SID_AND_ATTRIBUTES))
 	{
 		SetLastError(ERROR_INVALID_PARAMETER);
@@ -465,7 +481,7 @@ DWORD GetSidsToDisable(
 	
 	PSID intr;
 	ConvertStringSidToSid(L"S-1-5-4", &intr);
-	for (i = 0; i < pTokenGroups->GroupCount; i++)
+	for (DWORD i = 0; i < pTokenGroups->GroupCount; i++)
 	{
 		SID* pSid = (SID*)pTokenGroups->Groups[i].Sid;
 		if (!FullRestriction) {
@@ -499,12 +515,7 @@ BOOL TweakToken(HANDLE hToken)
 {
 	/// Local variables
 	TOKEN_DEFAULT_DACL TokenDacl;
-	PSID UserSid;
-	PSID OwnerSid;
 	DWORD needed;
-	DWORD sidlen;
-	ACCESS_ALLOWED_ACE* pAce;
-	SID EveryoneSid = { 1, 1, SECURITY_WORLD_SID_AUTHORITY, SECURITY_WORLD_RID };
 	SID SystemSid = { 1, 1, SECURITY_NT_AUTHORITY, SECURITY_LOCAL_SYSTEM_RID };
 	const DWORD MaxSidSize = sizeof(SID) + (SID_MAX_SUB_AUTHORITIES - 1) * sizeof(DWORD);
 	BYTE TokenUserBuf[MaxSidSize];
@@ -523,8 +534,8 @@ BOOL TweakToken(HANDLE hToken)
 	if (!GetTokenInformation(hToken, TokenOwner, TokenOwnerBuf, MaxSidSize, &needed)) {
 		return FALSE;
 	}
-	UserSid = ((TOKEN_USER*)TokenUserBuf)->User.Sid;
-	OwnerSid = ((TOKEN_OWNER*)TokenOwnerBuf)->Owner;
+	PSID UserSid = ((TOKEN_USER*)TokenUserBuf)->User.Sid;
+	PSID OwnerSid = ((TOKEN_OWNER*)TokenOwnerBuf)->Owner;
 
 
 	/// If the owner isn't the current user then set the owner as the current user.
@@ -545,14 +556,14 @@ BOOL TweakToken(HANDLE hToken)
 	}
 
 
-	sidlen = GetLengthSid(UserSid);
+	DWORD sidlen = GetLengthSid(UserSid);
 	/// Create the first ACE for the UserSid
-	pAce = (ACCESS_ALLOWED_ACE*)AceBuf;
+	ACCESS_ALLOWED_ACE * pAce = (ACCESS_ALLOWED_ACE*)AceBuf;
 	pAce->Header.AceFlags	= 0;
 	pAce->Header.AceType	= 0;
-	pAce->Header.AceSize	= sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + sidlen;
+	pAce->Header.AceSize	= (WORD)(sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + sidlen);
 	pAce->Mask				= GENERIC_ALL;
-	CopySid(sidlen, (PSID)&(pAce->SidStart), UserSid);
+	CopySid(sidlen, (PSID)&pAce->SidStart, UserSid);
 
 	/// Append the pAce to the end
 	if (!AddAce(pAcl, ACL_REVISION, ~0, pAce, pAce->Header.AceSize))
@@ -562,8 +573,8 @@ BOOL TweakToken(HANDLE hToken)
 	}
 
 	/// Now create the next one - everything is set, so we just change the SID and the size
-	pAce->Header.AceSize = sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + GetLengthSid((PSID)&SystemSid);
-	CopySid(GetLengthSid(&SystemSid), (PSID)&(pAce->SidStart), (PSID)&SystemSid);
+	pAce->Header.AceSize = (WORD)(sizeof(ACCESS_ALLOWED_ACE) - sizeof(DWORD) + GetLengthSid((PSID)&SystemSid));
+	CopySid(GetLengthSid(&SystemSid), (PSID)&pAce->SidStart, (PSID)&SystemSid);
 	if (!AddAce(pAcl, ACL_REVISION, ~0, pAce, pAce->Header.AceSize))
 	{
 		SetError(L"Cannot add System ACE to ACL", GetLastError());
@@ -581,17 +592,18 @@ BOOL TweakToken(HANDLE hToken)
 }
 
 
+
 HANDLE RestrictProcessToken(BOOL FullRestriction)
 {
 	/// Local variables
 	HANDLE RestrictedToken;
-	int err = 0;
-	int success = 0;
+	int err;
+	int success;
 	HANDLE hProcToken;
 	TOKEN_GROUPS* pTokenGroups;
 	PSID logon;
-	DWORD RestrictedCount = 0;
-	DWORD bufsize = 512;
+	DWORD RestrictedCount;
+	DWORD bufsize;
 	DWORD DisableSidCount;
 	SID_AND_ATTRIBUTES* SidsToDisable;
 	SID_AND_ATTRIBUTES* restrictedSids;
@@ -614,7 +626,7 @@ HANDLE RestrictProcessToken(BOOL FullRestriction)
 	/// Alocate dynamic buffer for the Disable SIDs
 	bufsize = pTokenGroups->GroupCount * sizeof(SID_AND_ATTRIBUTES);
 	SidsToDisable = (SID_AND_ATTRIBUTES*)GlobalAlloc(GPTR, bufsize);
-	if (SidsToDisable == NULL)
+	if (SidsToDisable == nullptr)
 	{
 		err = GetLastError();
 		SetError(L"Could not allocate memory for disabled sids", err);
@@ -638,9 +650,9 @@ HANDLE RestrictProcessToken(BOOL FullRestriction)
 	/// Create Restricted SID
 	/// If FullRestriction is n then leave only LOGON & RESTRICTED SIDs, 
 	/// otherwise leave LOGON, RESTRICTED, EVERYONE, BUILTIN\USERS SIDs.
-	RestrictedCount = FullRestriction ? 2 : 4;
+	RestrictedCount = FullRestriction ? 3 : 5;
 	restrictedSids = (SID_AND_ATTRIBUTES*)GlobalAlloc(GPTR, RestrictedCount * sizeof(SID_AND_ATTRIBUTES));
-	if (restrictedSids == NULL) {
+	if (restrictedSids == nullptr) {
 		err = GetLastError();
 		SetError(L"Could not allocate memory for restricted sids", err);
 		GlobalFree(SidsToDisable);
@@ -650,20 +662,23 @@ HANDLE RestrictProcessToken(BOOL FullRestriction)
 		return INVALID_HANDLE_VALUE;
 	}
 	ZeroMemory(restrictedSids, RestrictedCount * sizeof(SID_AND_ATTRIBUTES));
-	ConvertStringSidToSid(RESTRICTED_SID, &(restrictedSids[0].Sid));
+	ConvertStringSidToSid(RESTRICTED_SID, &restrictedSids[0].Sid);
 	GetLogonSID(hProcToken, &logon);
 	restrictedSids[1].Sid = logon;
+	PSID nullSid;
+	ConvertStringSidToSid(L"S-1-0-0", &nullSid); 
+	restrictedSids[2].Sid = nullSid;
 	if (!FullRestriction) {
-		restrictedSids[2].Sid = &EveryoneSid;
-		ConvertStringSidToSid(USERS_SID, &(restrictedSids[3].Sid));
+		restrictedSids[3].Sid = &EveryoneSid;
+		ConvertStringSidToSid(USERS_SID, &restrictedSids[4].Sid);
 	}
-
-		success = CreateRestrictedToken(hProcToken,  /// existing token
+	
+	success = CreateRestrictedToken(hProcToken, /// existing token
 			DISABLE_MAX_PRIVILEGE,				/// flags
 			DisableSidCount,					/// number of SIDs to disable
 			SidsToDisable,						/// array of SID and attributes
 			0,									/// number of privileges to drop
-			NULL,								/// array of privileges
+			nullptr,							/// array of privileges
 			RestrictedCount,					/// no restricted SIDs
 			restrictedSids,						/// array of restricted SIDs 
 			&RestrictedToken);

@@ -1,6 +1,5 @@
 #pragma once
 #include <Windows.h>
-#include <wchar.h>
 #include <streambuf>
 
 #define MAX_BUFFER	1024 

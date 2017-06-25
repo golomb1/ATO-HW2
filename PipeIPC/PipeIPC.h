@@ -1,7 +1,6 @@
 #pragma once
 #include <windows.h>
 #include <stdio.h>
-#include <assert.h>
 #include <Sddl.h>
 #include <aclapi.h>
 #include <stdlib.h>
@@ -17,7 +16,7 @@
 /// This structure define the IPCMessageHeader.
 ///</summery>
 struct IPCMessageHeader {
-	unsigned char RequestType;
+	DWORD RequestType;
 	DWORD Flags;
 	DWORD BodyLength;
 };
@@ -52,7 +51,7 @@ public:
 	/// using the registered request handle.
 	///</summery>
 	///<return>True if a request was handled successfully or False otherwise</return>
-	BOOL HandleMessage();
+	BOOL HandleMessage() const;
 
 	///<summery> allows to add a request handle for request of type @index</summery>
 	///<param name='requestType'>the id of the request to handle</param>
@@ -84,5 +83,5 @@ public:
 		__in	PVOID Buffer,
 		__in	DWORD Length,
 		__in	DWORD ResponseBufferSize,
-		__out	PBYTE ResponseBuffer);
+		__out	PBYTE ResponseBuffer) const;
 };

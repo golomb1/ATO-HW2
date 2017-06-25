@@ -1,7 +1,6 @@
 // dllmain.cpp : Defines the entry point for the DLL application.
 #include "stdafx.h"
 #include <Windows.h>
-#include <string.h>
 #include <stdio.h>
 #include <shellapi.h>
 #include <stdlib.h>
@@ -17,9 +16,9 @@ typedef struct {
 } DataToChild;
 
 
-RequestHandler* requestHandler					= NULL;
-CreateFileW_Orign createFileW					= NULL;
-CreateDirectory_Origin createDirectoryW			= NULL;
+RequestHandler* requestHandler					= nullptr;
+CreateFileW_Orign createFileW					= nullptr;
+CreateDirectory_Origin createDirectoryW			= nullptr;
 
 
 
@@ -32,7 +31,7 @@ extern "C" __declspec(dllexport) HANDLE WINAPI SBCreateFile(
 	_In_     DWORD                 dwFlagsAndAttributes,
 	_In_opt_ HANDLE                hTemplateFile) {
 	
-	if (requestHandler != NULL) {
+	if (requestHandler != nullptr) {
 		return requestHandler->CreateFileViaBroker(
 			lpFileName,
 			dwDesiredAccess,
@@ -49,7 +48,7 @@ extern "C" __declspec(dllexport) HANDLE WINAPI SBCreateFile(
 extern "C" __declspec(dllexport) BOOL WINAPI SBCreateDirectory(
 	_In_     LPCTSTR               lpPathName,
 	_In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes) {
-	if (requestHandler != NULL) {
+	if (requestHandler != nullptr) {
 		return  requestHandler->CreateDirectoryViaBroker(
 			lpPathName,
 			lpSecurityAttributes);
@@ -59,7 +58,7 @@ extern "C" __declspec(dllexport) BOOL WINAPI SBCreateDirectory(
 
 
 extern "C" __declspec(dllexport) DWORD WINAPI SBHandleInput(__in PWCHAR Input, __in DWORD InputSize) {
-	if (requestHandler != NULL) {
+	if (requestHandler != nullptr) {
 		return requestHandler->HandleInputViaBroker(
 			Input,
 			InputSize);
@@ -69,7 +68,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI SBHandleInput(__in PWCHAR Input, _
 
 
 extern "C" __declspec(dllexport) BOOL WINAPI SBHandleOutput(__in PWCHAR Message) {
-	if (requestHandler != NULL) {
+	if (requestHandler != nullptr) {
 		return requestHandler->HandleOutputViaBroker(Message);
 	}
 	return NULL;
@@ -89,7 +88,7 @@ HANDLE WINAPI HookedCreateFileW(
 	_In_opt_ HANDLE                hTemplateFile
 )
 {
-	if (requestHandler == NULL) {
+	if (requestHandler == nullptr) {
 		SetLastError(ERROR_ACCESS_DENIED);
 		return INVALID_HANDLE_VALUE;
 	}
@@ -107,7 +106,7 @@ HANDLE WINAPI HookedCreateFileW(
 BOOL HookedCreateDirectoryW(
 	_In_     LPCTSTR               lpPathName,
 	_In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes) {
-	if (requestHandler == NULL) {
+	if (requestHandler == nullptr) {
 		SetLastError(ERROR_ACCESS_DENIED);
 		return FALSE;
 	}
@@ -145,7 +144,7 @@ VOID HandleError(__in const PWCHAR Message, __in DWORD Error) {
 ///<return>List of wide character string that include the arguments</return>
 LPWSTR* ParseProgramParameter(__out PINT argc) {
 	LPWSTR* argv = CommandLineToArgvW(GetCommandLine(), argc);
-	if (argv == NULL && *argc > 0) {
+	if (argv == nullptr && *argc > 0) {
 		TerminateProcess(GetCurrentProcess(), EXIT_FAILURE);
 	}
 	return argv;
@@ -154,8 +153,8 @@ LPWSTR* ParseProgramParameter(__out PINT argc) {
 
 DWORD SetParameters(_In_ LPVOID lpParameter) {
 	DataToChild* data = (DataToChild*)lpParameter;
-	if (requestHandler == NULL) {
-		requestHandler = new RequestHandler(NULL, data->read, data->write);
+	if (requestHandler == nullptr) {
+		requestHandler = new RequestHandler(nullptr, data->read, data->write);
 		return TRUE;
 	}
 	else {
@@ -166,7 +165,7 @@ DWORD SetParameters(_In_ LPVOID lpParameter) {
 }
 
 VOID SandBoxMain() {
-	DWORD entry = GetEntryPoint(GetModuleHandle(NULL));
+	DWORD entry = GetEntryPoint(GetModuleHandle(nullptr));
 
 	/// Now we decrease permission & privilleges
 	if (!RevertToSelf()) {
@@ -175,7 +174,7 @@ VOID SandBoxMain() {
 	}
 
 	/// Create IPC object
-	if (requestHandler != NULL){// == NULL) {
+	if (requestHandler != nullptr){// == NULL) {
 		
 		/// Hook functions to make it easier for the process
 		if (!requestHandler->NotifyOnInitilizationComplete()) {
@@ -213,6 +212,7 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 	case DLL_THREAD_ATTACH:
 	case DLL_THREAD_DETACH:
 	case DLL_PROCESS_DETACH:
+	default: 
 		break;
 	}
 	return TRUE;

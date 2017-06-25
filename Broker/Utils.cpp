@@ -1,5 +1,11 @@
 #include "stdafx.h"
 #include "Utils.h"
+#include <stdio.h>
+#include <assert.h>
+#include <AclAPI.h>
+#include <Sddl.h>
+#include <malloc.h>
+#include "ErrorMessage.h"
 
 
 /*
@@ -234,7 +240,7 @@ return bSuccess;
 */
 
 
-BOOL DenySidFromDesktop(HDESK hdesk, PSID psid)
+BOOL AddSidToDesktop(HDESK hdesk, PSID psid, BOOL ToDenied)
 {
 	ACL_SIZE_INFORMATION aclSizeInfo;
 	BOOL                 bDaclExist;
@@ -245,9 +251,9 @@ BOOL DenySidFromDesktop(HDESK hdesk, PSID psid)
 	DWORD                dwSidSize = 0;
 	DWORD                dwSdSizeNeeded;
 	PACL                 pacl;
-	PACL                 pNewAcl = 0;
-	PSECURITY_DESCRIPTOR psd = NULL;
-	PSECURITY_DESCRIPTOR psdNew = NULL;
+	PACL                 pNewAcl = nullptr;
+	PSECURITY_DESCRIPTOR psd = nullptr;
+	PSECURITY_DESCRIPTOR psdNew = nullptr;
 	PVOID                pTempAce;
 	SECURITY_INFORMATION si = DACL_SECURITY_INFORMATION;
 	unsigned int         i;
@@ -261,13 +267,13 @@ BOOL DenySidFromDesktop(HDESK hdesk, PSID psid)
 			{
 				psd = (PSECURITY_DESCRIPTOR)HeapAlloc(
 					GetProcessHeap(), HEAP_ZERO_MEMORY, dwSdSizeNeeded);
-				if (psd == NULL) {
+				if (psd == nullptr) {
 					SetError(L"Could not allocate memory for desktop security descriptor.", GetLastError());
 					__leave;
 				}
 				psdNew = (PSECURITY_DESCRIPTOR)HeapAlloc(
 					GetProcessHeap(), HEAP_ZERO_MEMORY, dwSdSizeNeeded);
-				if (psdNew == NULL) {
+				if (psdNew == nullptr) {
 					SetError(L"Could not allocate memory for copy of desktop security descriptor.", GetLastError());
 					__leave;
 				}
@@ -301,7 +307,7 @@ BOOL DenySidFromDesktop(HDESK hdesk, PSID psid)
 		aclSizeInfo.AclBytesInUse = sizeof(ACL);
 
 		/// call only if NULL dacl
-		if (pacl == NULL)
+		if (pacl == nullptr)
 		{
 			/// determine the size of the ACL info 
 			if (!GetAclInformation(pacl, (LPVOID)&aclSizeInfo,
@@ -320,7 +326,7 @@ BOOL DenySidFromDesktop(HDESK hdesk, PSID psid)
 
 		/// allocate buffer for the new acl
 		pNewAcl = (PACL)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwNewAclSize);
-		if (pNewAcl == NULL) {
+		if (pNewAcl == nullptr) {
 			SetError(L"Could not allocate ACL for deny.", GetLastError());
 			__leave;
 		}
@@ -353,9 +359,18 @@ BOOL DenySidFromDesktop(HDESK hdesk, PSID psid)
 		}
 
 		/// add the new ace to the dacl
-		if (0 && !AddAccessDeniedAce(pNewAcl, ACL_REVISION, DESKTOP_ALL, psid)) {
-			SetError(L"Could not add the new ACE.", GetLastError());
-			__leave;
+		if (ToDenied) {
+			if (!AddAccessDeniedAce(pNewAcl, ACL_REVISION, DESKTOP_ALL, psid)) {
+				SetError(L"Could not add the new ACE.", GetLastError());
+				__leave;
+			}
+		}
+		else
+		{
+			if (!AddAccessAllowedAce(pNewAcl, ACL_REVISION, DESKTOP_ALL, psid)) {
+				SetError(L"Could not add the new ACE.", GetLastError());
+				__leave;
+			}
 		}
 
 		/// set new dacl to the new security descriptor 
@@ -366,7 +381,7 @@ BOOL DenySidFromDesktop(HDESK hdesk, PSID psid)
 
 		ULONG cb = MAX_SID_SIZE;
 		PSID UntrustedSid = (PSID)alloca(MAX_SID_SIZE);
-		CreateWellKnownSid(WinLowLabelSid, 0, UntrustedSid, &cb);
+		CreateWellKnownSid(WinLowLabelSid, nullptr, UntrustedSid, &cb);
 		PACL Sacl = (PACL)alloca(cb += sizeof(ACL) + sizeof(ACE_HEADER) + sizeof(ACCESS_MASK));
 		InitializeAcl(Sacl, cb, ACL_REVISION);
 		AddMandatoryAce(Sacl, ACL_REVISION, 0, 0, UntrustedSid);
@@ -383,13 +398,13 @@ BOOL DenySidFromDesktop(HDESK hdesk, PSID psid)
 	__finally
 	{
 		/// free buffers
-		if (pNewAcl != NULL)
+		if (pNewAcl != nullptr)
 			HeapFree(GetProcessHeap(), 0, (LPVOID)pNewAcl);
 
-		if (psd != NULL)
+		if (psd != nullptr)
 			HeapFree(GetProcessHeap(), 0, (LPVOID)psd);
 
-		if (psdNew != NULL)
+		if (psdNew != nullptr)
 			HeapFree(GetProcessHeap(), 0, (LPVOID)psdNew);
 	}
 	return bSuccess;
@@ -397,19 +412,19 @@ BOOL DenySidFromDesktop(HDESK hdesk, PSID psid)
 
 
 BOOL GetSecurityAttributes(__in HANDLE Handle, __out PSECURITY_ATTRIBUTES Attributes){
-	if (Attributes == NULL) {
+	if (Attributes == nullptr) {
 		SetLastError(ERROR_INVALID_PARAMETER);
 		return FALSE;
 	}
 	Attributes->bInheritHandle = FALSE;
 	Attributes->nLength = sizeof(SECURITY_ATTRIBUTES);
 
-	PACL dacl = NULL;
+	PACL dacl = nullptr;
 	DWORD result = GetSecurityInfo(
 		Handle,
 		SE_WINDOW_OBJECT,
-		DACL_SECURITY_INFORMATION, NULL, NULL, &dacl,
-		NULL, &Attributes->lpSecurityDescriptor);
+		DACL_SECURITY_INFORMATION, nullptr, nullptr, &dacl,
+		nullptr, &Attributes->lpSecurityDescriptor);
 	if (ERROR_SUCCESS == result) {
 		return TRUE;
 	}
@@ -432,25 +447,24 @@ BOOL CreateProcessAsUserWithExplicitHandles(
 	__in         DWORD numOfHandlesToInherit,
 	__in_ecount(cHandlesToInherit) HANDLE *rgHandlesToInherit)
 {
-	BOOL fSuccess;
 	BOOL fInitialized = FALSE;
 	SIZE_T size = 0;
-	LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList = NULL;
+	LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList = nullptr;
 
-	fSuccess = numOfHandlesToInherit < 0xFFFFFFFF / sizeof(HANDLE) &&
-		lpStartupInfo->cb == sizeof(*lpStartupInfo);
+	BOOL fSuccess = numOfHandlesToInherit < 0xFFFFFFFF / sizeof(HANDLE) &&
+		lpStartupInfo->cb == sizeof*lpStartupInfo;
 	if (!fSuccess) {
 		SetLastError(ERROR_INVALID_PARAMETER);
 		return FALSE;
 	}
 	if (fSuccess) {
-		fSuccess = InitializeProcThreadAttributeList(NULL, 1, 0, &size) ||
+		fSuccess = InitializeProcThreadAttributeList(nullptr, 1, 0, &size) ||
 			GetLastError() == ERROR_INSUFFICIENT_BUFFER;
 	}
 	if (fSuccess) {
 		lpAttributeList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>
 			(HeapAlloc(GetProcessHeap(), 0, size));
-		fSuccess = lpAttributeList != NULL;
+		fSuccess = lpAttributeList != nullptr;
 	}
 	if (fSuccess) {
 		fSuccess = InitializeProcThreadAttributeList(lpAttributeList,
@@ -461,13 +475,13 @@ BOOL CreateProcessAsUserWithExplicitHandles(
 		fSuccess = UpdateProcThreadAttribute(lpAttributeList,
 			0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
 			rgHandlesToInherit,
-			numOfHandlesToInherit * sizeof(HANDLE), NULL, NULL);
+			numOfHandlesToInherit * sizeof(HANDLE), nullptr, nullptr);
 	}
 	if (fSuccess) {
 		STARTUPINFOEX info;
-		ZeroMemory(&info, sizeof(info));
+		ZeroMemory(&info, sizeof info);
 		info.StartupInfo = *lpStartupInfo;
-		info.StartupInfo.cb = sizeof(info);
+		info.StartupInfo.cb = sizeof info;
 		info.lpAttributeList = lpAttributeList;
 		fSuccess = CreateProcessAsUser(hToken, lpApplicationName,
 			lpCommandLine,
@@ -494,19 +508,19 @@ BOOL GetTokenGroups(
 	DWORD bufsize = 0;
 	DWORD bufsize2 = 0;
 	/// Never trust anything from the user
-	if (ppTokenGroups == NULL)
+	if (ppTokenGroups == nullptr)
 	{
 		SetLastError(ERROR_INVALID_PARAMETER);
 		return FALSE;
 	}
 
 	/// We need to allocate a buffer for the groups, 
-	if (GetTokenInformation(hProcToken, TokenGroups, NULL, 0, &bufsize) || GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+	if (GetTokenInformation(hProcToken, TokenGroups, nullptr, 0, &bufsize) || GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
 		return FALSE;
 	}
 	
 	*ppTokenGroups = (TOKEN_GROUPS*)GlobalAlloc(GPTR, bufsize);
-	if ((*ppTokenGroups) == NULL)
+	if (*ppTokenGroups == nullptr)
 	{
 		return FALSE;
 	}
@@ -521,11 +535,8 @@ BOOL GetLogonSID(
 	__in	HANDLE hToken, 
 	__out	PSID* ppSid)
 {
-	BOOL bSuccess = FALSE;
-	DWORD dwIndex = 0;
 	DWORD dwLength = 0;
-	PTOKEN_GROUPS ptgrp = NULL;
-	LPTSTR pSid = L"";
+	PTOKEN_GROUPS ptgrp = nullptr;
 	
 	/// Get the required buffer size and allocate the TOKEN_GROUPS buffer.
 	if (!GetTokenInformation(
@@ -541,7 +552,7 @@ BOOL GetLogonSID(
 			/// allocate buffer, re-allocate...
 			ptgrp = (PTOKEN_GROUPS)GlobalAlloc(GPTR, dwLength);
 		}
-		if (ptgrp == NULL)
+		if (ptgrp == nullptr)
 		{
 			SetError(L"Failed to allocate heap for process's groups", GetLastError());
 			return FALSE;
@@ -563,16 +574,16 @@ BOOL GetLogonSID(
 	}
 
 	/// Loop through the groups to find the logon SID.
-	for (dwIndex = 0; dwIndex < ptgrp->GroupCount; dwIndex++) {
+	for (DWORD dwIndex = 0; dwIndex < ptgrp->GroupCount; dwIndex++) {
 		if ((ptgrp->Groups[dwIndex].Attributes & SE_GROUP_LOGON_ID) == SE_GROUP_LOGON_ID)
 		{
 			dwLength = GetLengthSid(ptgrp->Groups[dwIndex].Sid);
-			(*ppSid) = (PSID)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwLength);
-			if ((*ppSid) == 0) {
+			*ppSid = (PSID)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, dwLength);
+			if (*ppSid == nullptr) {
 				SetError(L"Failed to allocate memory for the SID", GetLastError());
 				return FALSE;
 			}
-			if (!CopySid(dwLength, (*ppSid), ptgrp->Groups[dwIndex].Sid))  // Source
+			if (!CopySid(dwLength, *ppSid, ptgrp->Groups[dwIndex].Sid))  // Source
 			{
 				SetError(L"Failed to copy the SID", GetLastError());
 				return FALSE;
@@ -593,7 +604,7 @@ BOOL SetLowIntegrityLevel(__in HANDLE hToken) {
 }
 
 BOOL SetIntegrityLevel(__in LPCTSTR integritySid, __in HANDLE hToken) {
-	PSID pIntegritySid = NULL;
+	PSID pIntegritySid = nullptr;
 	TOKEN_MANDATORY_LABEL tml;
 
 	if (!ConvertStringSidToSid(integritySid, &pIntegritySid)) {

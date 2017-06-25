@@ -1,11 +1,5 @@
 #pragma once
 #include <windows.h>
-#include <stdio.h>
-#include <assert.h>
-#include <AclAPI.h>
-#include <Sddl.h>
-#include <malloc.h>
-#include "ErrorMessage.h"
 
 
 #define UNTRUSTED_INTEGRITY_SID		L"S-1-16-0"
@@ -15,10 +9,11 @@
 
 
 
-///<summey>Add a sid for a desktop as deny full access</summery>
+///<summey>Add a sid for a desktop as deny/allow full access</summery>
 ///<param name='hdesk'>The desktop handle</param>
-///<param name='psid'>pointer to sid to deny</param>
-BOOL DenySidFromDesktop(HDESK hdesk, PSID psid);
+///<param name='psid'>pointer to sid to deny/allows</param>
+///<param name='ToDenied'>wheter to deny or allows</param>
+BOOL AddSidToDesktop(HDESK hdesk, PSID psid, BOOL ToDenied);
 
 ///<summery>Get the security attribute of the given handle</summet>
 ///<<param name='Handle'>the handle</param>

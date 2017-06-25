@@ -1,7 +1,6 @@
 #include "stdafx.h"
 #include "Hooker.h"
 
-
 #define pointerFromRVA(base, rvd) (((char*)base)+((int)rvd))
 
 bool patchIAT(__in HMODULE module, __in PSTR ImportedModuleName, __in PSTR ImportedProcName, __in PVOID alternativeProc, __out_opt PVOID* oldProcAddress)

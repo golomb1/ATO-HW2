@@ -1,10 +1,9 @@
 #include "stdafx.h"
 #include "RemoteUtils.h"
-
 #include <string>
 #include <windows.h>
 #include <psapi.h>
-
+#include <stdlib.h>
 
 using std::string;
 
@@ -24,16 +23,16 @@ void ToLowerCase(__in LPCSTR lpModuleName, __out PCHAR lpModuleNameCopy, __in DW
 
 HMODULE WINAPI GetRemoteModuleHandle(HANDLE hProcess, LPCSTR lpModuleName)
 {
-	HMODULE* ModuleArray = NULL;
+	HMODULE* ModuleArray;
 	DWORD ModuleArraySize = 100;
 	DWORD NumModules = 0;
 	CHAR lpModuleNameCopy[MAX_PATH] = { 0 };
 	CHAR ModuleNameBuffer[MAX_PATH] = { 0 };
 
 	/// Never trust the user....
-	if (lpModuleName == NULL) {
+	if (lpModuleName == nullptr) {
 		SetLastError(ERROR_INVALID_PARAMETER);
-		return NULL;
+		return nullptr;
 	}
 
 	/// To ease during the name comapration, we will convert the name to lowwer cases.
@@ -43,7 +42,7 @@ HMODULE WINAPI GetRemoteModuleHandle(HANDLE hProcess, LPCSTR lpModuleName)
 	ModuleArray = new HMODULE[ModuleArraySize];
 
 	/* Check if the allocation failed */
-	if (ModuleArray == NULL)
+	if (ModuleArray == nullptr)
 		goto GRMH_FAIL_JMP;
 
 	/* Get handles to all the modules in the target process */
@@ -58,11 +57,10 @@ HMODULE WINAPI GetRemoteModuleHandle(HANDLE hProcess, LPCSTR lpModuleName)
 	if (NumModules > ModuleArraySize)
 	{
 		delete[] ModuleArray; // Deallocate so we can try again
-		ModuleArray = NULL; // Set it to NULL se we can be sure if the next try fails
 		ModuleArray = new HMODULE[NumModules]; // Allocate the right amount of memory
 
 											   /* Check if the allocation failed */
-		if (ModuleArray == NULL)
+		if (ModuleArray == nullptr)
 			goto GRMH_FAIL_JMP;
 
 		ModuleArraySize = NumModules; // Update the size of the array
@@ -81,7 +79,7 @@ HMODULE WINAPI GetRemoteModuleHandle(HANDLE hProcess, LPCSTR lpModuleName)
 	{
 		/* Get the module's name */
 		GetModuleBaseNameA(hProcess, ModuleArray[i],
-			ModuleNameBuffer, sizeof(ModuleNameBuffer));
+			ModuleNameBuffer, sizeof ModuleNameBuffer);
 
 		/* Convert ModuleNameBuffer to all lowercase so the comparison isn't case sensitive */
 		for (size_t j = 0; ModuleNameBuffer[j] != '\0'; ++j)
@@ -91,7 +89,7 @@ HMODULE WINAPI GetRemoteModuleHandle(HANDLE hProcess, LPCSTR lpModuleName)
 		}
 
 		/* Does the name match? */
-		if (strstr(ModuleNameBuffer, lpModuleNameCopy) != NULL)
+		if (strstr(ModuleNameBuffer, lpModuleNameCopy) != nullptr)
 		{
 			/* Make a temporary variable to hold return value*/
 			HMODULE TempReturn = ModuleArray[i];
@@ -110,67 +108,67 @@ HMODULE WINAPI GetRemoteModuleHandle(HANDLE hProcess, LPCSTR lpModuleName)
 GRMH_FAIL_JMP:
 	int err = GetLastError();
 	/* If we got to the point where we allocated memory we need to give it back */
-	if (ModuleArray != NULL)
+	if (ModuleArray != nullptr)
 		delete[] ModuleArray;
-
+	SetLastError(err);
 	/* Failure... */
-	return NULL;
+	return nullptr;
 }
 
 
 FARPROC WINAPI GetRemoteProcAddress(HANDLE hProcess, HMODULE hModule, LPCSTR lpProcName, UINT Ordinal, BOOL UseOrdinal)
 {
-	BOOL Is64Bit = FALSE;
-	MODULEINFO RemoteModuleInfo = { 0 };
-	UINT_PTR RemoteModuleBaseVA = 0;
+	BOOL Is64Bit;
+	MODULEINFO RemoteModuleInfo = { nullptr };
+	UINT_PTR RemoteModuleBaseVA;
 	IMAGE_DOS_HEADER DosHeader = { 0 };
 	DWORD Signature = 0;
 	IMAGE_FILE_HEADER FileHeader = { 0 };
 	IMAGE_OPTIONAL_HEADER64 OptHeader64 = { 0 };
 	IMAGE_OPTIONAL_HEADER32 OptHeader32 = { 0 };
-	IMAGE_DATA_DIRECTORY ExportDirectory = { 0 };
+	IMAGE_DATA_DIRECTORY ExportDirectory;
 	IMAGE_EXPORT_DIRECTORY ExportTable = { 0 };
-	UINT_PTR ExportFunctionTableVA = 0;
-	UINT_PTR ExportNameTableVA = 0;
-	UINT_PTR ExportOrdinalTableVA = 0;
-	DWORD* ExportFunctionTable = NULL;
-	DWORD* ExportNameTable = NULL;
-	WORD* ExportOrdinalTable = NULL;
+	UINT_PTR ExportFunctionTableVA;
+	UINT_PTR ExportNameTableVA;
+	UINT_PTR ExportOrdinalTableVA;
+	DWORD* ExportFunctionTable = nullptr;
+	DWORD* ExportNameTable = nullptr;
+	WORD* ExportOrdinalTable = nullptr;
 
 	/* Temporary variables not used until much later but easier
 	/* to define here than in all the the places they are used */
 	CHAR TempChar;
-	BOOL Done = FALSE;
+	BOOL Done;
 
 	/* Check to make sure we didn't get a NULL pointer for the name unless we are searching by ordinal */
-	if (lpProcName == NULL && !UseOrdinal)
+	if (lpProcName == nullptr && !UseOrdinal)
 		goto GRPA_FAIL_JMP;
 
 	/* Get the base address of the remote module along with some other info we don't need */
-	if (!::GetModuleInformation(hProcess, hModule, &RemoteModuleInfo, sizeof(RemoteModuleInfo)))
+	if (!::GetModuleInformation(hProcess, hModule, &RemoteModuleInfo, sizeof RemoteModuleInfo))
 		goto GRPA_FAIL_JMP;
 	RemoteModuleBaseVA = (UINT_PTR)RemoteModuleInfo.lpBaseOfDll;
 
 	/* Read the DOS header and check it's magic number */
-	if (!::ReadProcessMemory(hProcess, (LPCVOID)RemoteModuleBaseVA, &DosHeader,
-		sizeof(DosHeader), NULL) || DosHeader.e_magic != IMAGE_DOS_SIGNATURE)
+	if (!ReadProcessMemory(hProcess, (LPCVOID)RemoteModuleBaseVA, &DosHeader,
+		sizeof DosHeader, nullptr) || DosHeader.e_magic != IMAGE_DOS_SIGNATURE)
 		goto GRPA_FAIL_JMP;
 
 	/* Read and check the NT signature */
-	if (!::ReadProcessMemory(hProcess, (LPCVOID)(RemoteModuleBaseVA + DosHeader.e_lfanew),
-		&Signature, sizeof(Signature), NULL) || Signature != IMAGE_NT_SIGNATURE)
+	if (!ReadProcessMemory(hProcess, (LPCVOID)(RemoteModuleBaseVA + DosHeader.e_lfanew),
+		&Signature, sizeof Signature, nullptr) || Signature != IMAGE_NT_SIGNATURE)
 		goto GRPA_FAIL_JMP;
 
 	/* Read the main header */
-	if (!::ReadProcessMemory(hProcess,
-		(LPCVOID)(RemoteModuleBaseVA + DosHeader.e_lfanew + sizeof(Signature)),
-		&FileHeader, sizeof(FileHeader), NULL))
+	if (!ReadProcessMemory(hProcess,
+		(LPCVOID)(RemoteModuleBaseVA + DosHeader.e_lfanew + sizeof Signature),
+		&FileHeader, sizeof FileHeader, nullptr))
 		goto GRPA_FAIL_JMP;
 
 	/* Which type of optional header is the right size? */
-	if (FileHeader.SizeOfOptionalHeader == sizeof(OptHeader64))
+	if (FileHeader.SizeOfOptionalHeader == sizeof OptHeader64)
 		Is64Bit = TRUE;
-	else if (FileHeader.SizeOfOptionalHeader == sizeof(OptHeader32))
+	else if (FileHeader.SizeOfOptionalHeader == sizeof OptHeader32)
 		Is64Bit = FALSE;
 	else
 		goto GRPA_FAIL_JMP;
@@ -178,18 +176,18 @@ FARPROC WINAPI GetRemoteProcAddress(HANDLE hProcess, HMODULE hModule, LPCSTR lpP
 	if (Is64Bit)
 	{
 		/* Read the optional header and check it's magic number */
-		if (!::ReadProcessMemory(hProcess,
-			(LPCVOID)(RemoteModuleBaseVA + DosHeader.e_lfanew + sizeof(Signature) + sizeof(FileHeader)),
-			&OptHeader64, FileHeader.SizeOfOptionalHeader, NULL)
+		if (!ReadProcessMemory(hProcess,
+			(LPCVOID)(RemoteModuleBaseVA + DosHeader.e_lfanew + sizeof Signature + sizeof FileHeader),
+			&OptHeader64, FileHeader.SizeOfOptionalHeader, nullptr)
 			|| OptHeader64.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC)
 			goto GRPA_FAIL_JMP;
 	}
 	else
 	{
 		/* Read the optional header and check it's magic number */
-		if (!::ReadProcessMemory(hProcess,
-			(LPCVOID)(RemoteModuleBaseVA + DosHeader.e_lfanew + sizeof(Signature) + sizeof(FileHeader)),
-			&OptHeader32, FileHeader.SizeOfOptionalHeader, NULL)
+		if (!ReadProcessMemory(hProcess,
+			(LPCVOID)(RemoteModuleBaseVA + DosHeader.e_lfanew + sizeof Signature + sizeof FileHeader),
+			&OptHeader32, FileHeader.SizeOfOptionalHeader, nullptr)
 			|| OptHeader32.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC)
 			goto GRPA_FAIL_JMP;
 	}
@@ -197,20 +195,20 @@ FARPROC WINAPI GetRemoteProcAddress(HANDLE hProcess, HMODULE hModule, LPCSTR lpP
 	/* Make sure the remote module has an export directory and if it does save it's relative address and size */
 	if (Is64Bit && OptHeader64.NumberOfRvaAndSizes >= IMAGE_DIRECTORY_ENTRY_EXPORT + 1)
 	{
-		ExportDirectory.VirtualAddress = (OptHeader64.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]).VirtualAddress;
-		ExportDirectory.Size = (OptHeader64.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]).Size;
+		ExportDirectory.VirtualAddress = OptHeader64.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
+		ExportDirectory.Size = OptHeader64.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size;
 	}
 	else if (OptHeader32.NumberOfRvaAndSizes >= IMAGE_DIRECTORY_ENTRY_EXPORT + 1)
 	{
-		ExportDirectory.VirtualAddress = (OptHeader32.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]).VirtualAddress;
-		ExportDirectory.Size = (OptHeader32.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]).Size;
+		ExportDirectory.VirtualAddress = OptHeader32.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
+		ExportDirectory.Size = OptHeader32.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size;
 	}
 	else
 		goto GRPA_FAIL_JMP;
 
 	/* Read the main export table */
-	if (!::ReadProcessMemory(hProcess, (LPCVOID)(RemoteModuleBaseVA + ExportDirectory.VirtualAddress),
-		&ExportTable, sizeof(ExportTable), NULL))
+	if (!ReadProcessMemory(hProcess, (LPCVOID)(RemoteModuleBaseVA + ExportDirectory.VirtualAddress),
+		&ExportTable, sizeof ExportTable, nullptr))
 		goto GRPA_FAIL_JMP;
 
 	/* Save the absolute address of the tables so we don't need to keep adding the base address */
@@ -224,22 +222,22 @@ FARPROC WINAPI GetRemoteProcAddress(HANDLE hProcess, HMODULE hModule, LPCSTR lpP
 	ExportOrdinalTable = new WORD[ExportTable.NumberOfNames];
 
 	/* Check if the allocation failed */
-	if (ExportFunctionTable == NULL || ExportNameTable == NULL || ExportOrdinalTable == NULL)
+	if (ExportFunctionTable == nullptr || ExportNameTable == nullptr || ExportOrdinalTable == nullptr)
 		goto GRPA_FAIL_JMP;
 
 	/* Get a copy of the function table */
-	if (!::ReadProcessMemory(hProcess, (LPCVOID)ExportFunctionTableVA,
-		ExportFunctionTable, ExportTable.NumberOfFunctions * sizeof(DWORD), NULL))
+	if (!ReadProcessMemory(hProcess, (LPCVOID)ExportFunctionTableVA,
+		ExportFunctionTable, ExportTable.NumberOfFunctions * sizeof(DWORD), nullptr))
 		goto GRPA_FAIL_JMP;
 
 	/* Get a copy of the name table */
-	if (!::ReadProcessMemory(hProcess, (LPCVOID)ExportNameTableVA,
-		ExportNameTable, ExportTable.NumberOfNames * sizeof(DWORD), NULL))
+	if (!ReadProcessMemory(hProcess, (LPCVOID)ExportNameTableVA,
+		ExportNameTable, ExportTable.NumberOfNames * sizeof(DWORD), nullptr))
 		goto GRPA_FAIL_JMP;
 
 	/* Get a copy of the ordinal table */
-	if (!::ReadProcessMemory(hProcess, (LPCVOID)ExportOrdinalTableVA,
-		ExportOrdinalTable, ExportTable.NumberOfNames * sizeof(WORD), NULL))
+	if (!ReadProcessMemory(hProcess, (LPCVOID)ExportOrdinalTableVA,
+		ExportOrdinalTable, ExportTable.NumberOfNames * sizeof(WORD), nullptr))
 		goto GRPA_FAIL_JMP;
 
 	/* If we are searching for an ordinal we do that now */
@@ -250,7 +248,7 @@ FARPROC WINAPI GetRemoteProcAddress(HANDLE hProcess, HMODULE hModule, LPCSTR lpP
 		/* from our ordinal but it seems to always give the wrong function if we don't */
 
 		/* Make sure the ordinal is valid */
-		if (Ordinal < ExportTable.Base || (Ordinal - ExportTable.Base) >= ExportTable.NumberOfFunctions)
+		if (Ordinal < ExportTable.Base || Ordinal - ExportTable.Base >= ExportTable.NumberOfFunctions)
 			goto GRPA_FAIL_JMP;
 
 		UINT FunctionTableIndex = Ordinal - ExportTable.Base;
@@ -267,9 +265,9 @@ FARPROC WINAPI GetRemoteProcAddress(HANDLE hProcess, HMODULE hModule, LPCSTR lpP
 			for (UINT_PTR i = 0; !Done; ++i)
 			{
 				/* Get next character */
-				if (!::ReadProcessMemory(hProcess,
+				if (!ReadProcessMemory(hProcess,
 					(LPCVOID)(RemoteModuleBaseVA + ExportFunctionTable[FunctionTableIndex] + i),
-					&TempChar, sizeof(TempChar), NULL))
+					&TempChar, sizeof TempChar, nullptr))
 					goto GRPA_FAIL_JMP;
 
 				TempForwardString.push_back(TempChar); // Add it to the string
@@ -312,7 +310,7 @@ FARPROC WINAPI GetRemoteProcAddress(HANDLE hProcess, HMODULE hModule, LPCSTR lpP
 				}
 
 				/* Recursively call this function to get return value */
-				TempReturn = GetRemoteProcAddress(hProcess, RealModule, NULL, RealOrdinal, TRUE);
+				TempReturn = GetRemoteProcAddress(hProcess, RealModule, nullptr, RealOrdinal, TRUE);
 			}
 			else // Exported by name
 			{
@@ -356,8 +354,8 @@ FARPROC WINAPI GetRemoteProcAddress(HANDLE hProcess, HMODULE hModule, LPCSTR lpP
 		for (UINT_PTR j = 0; !Done; ++j)
 		{
 			/* Get next character */
-			if (!::ReadProcessMemory(hProcess, (LPCVOID)(RemoteModuleBaseVA + ExportNameTable[i] + j),
-				&TempChar, sizeof(TempChar), NULL))
+			if (!ReadProcessMemory(hProcess, (LPCVOID)(RemoteModuleBaseVA + ExportNameTable[i] + j),
+				&TempChar, sizeof TempChar, nullptr))
 				goto GRPA_FAIL_JMP;
 
 			TempFunctionName.push_back(TempChar); // Add it to the string
@@ -386,9 +384,9 @@ FARPROC WINAPI GetRemoteProcAddress(HANDLE hProcess, HMODULE hModule, LPCSTR lpP
 				for (UINT_PTR j = 0; !Done; ++j)
 				{
 					/* Get next character */
-					if (!::ReadProcessMemory(hProcess,
+					if (!ReadProcessMemory(hProcess,
 						(LPCVOID)(RemoteModuleBaseVA + ExportFunctionTable[i] + j),
-						&TempChar, sizeof(TempChar), NULL))
+						&TempChar, sizeof TempChar, nullptr))
 						goto GRPA_FAIL_JMP;
 
 					TempForwardString.push_back(TempChar); // Add it to the string
@@ -419,19 +417,19 @@ FARPROC WINAPI GetRemoteProcAddress(HANDLE hProcess, HMODULE hModule, LPCSTR lpP
 					RealFunctionId.erase(0, 1); // Remove '#' from string
 
 												/* My version of atoi() because I was to lazy to use the real one... */
-					for (size_t i = 0; i < RealFunctionId.size(); ++i)
+					for (size_t index = 0; index < RealFunctionId.size(); ++index)
 					{
-						if (RealFunctionId[i] >= '0' && RealFunctionId[i] <= '9')
+						if (RealFunctionId[index] >= '0' && RealFunctionId[index] <= '9')
 						{
 							RealOrdinal *= 10;
-							RealOrdinal += RealFunctionId[i] - '0';
+							RealOrdinal += RealFunctionId[index] - '0';
 						}
 						else
 							break;
 					}
 
 					/* Recursively call this function to get return value */
-					TempReturn = GetRemoteProcAddress(hProcess, RealModule, NULL, RealOrdinal, TRUE);
+					TempReturn = GetRemoteProcAddress(hProcess, RealModule, nullptr, RealOrdinal, TRUE);
 				}
 				else // Exported by name
 				{
@@ -478,13 +476,13 @@ FARPROC WINAPI GetRemoteProcAddress(HANDLE hProcess, HMODULE hModule, LPCSTR lpP
 GRPA_FAIL_JMP:
 
 	/* If we got to the point where we allocated memory we need to give it back */
-	if (ExportFunctionTable != NULL)
+	if (ExportFunctionTable != nullptr)
 		delete[] ExportFunctionTable;
-	if (ExportNameTable != NULL)
+	if (ExportNameTable != nullptr)
 		delete[] ExportNameTable;
-	if (ExportOrdinalTable != NULL)
+	if (ExportOrdinalTable != nullptr)
 		delete[] ExportOrdinalTable;
 
 	/* Falure... */
-	return NULL;
+	return nullptr;
 }

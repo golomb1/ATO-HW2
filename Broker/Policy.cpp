@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "Policy.h"
-
+#include <string>
+#include <fstream>
 
 
 Policy::Policy()
@@ -14,12 +15,11 @@ Policy::~Policy()
 
 
 BOOL Policy::ParsePolicyFile(__in PWCHAR PolicyFileName) {
-	return TRUE;
 	using namespace std;
 	wifstream policyFile(PolicyFileName);
 	wstring line;
 
-	while (std::getline(policyFile, line)) {
+	while (getline(policyFile, line)) {
 		if (!ParseLine(line, allows, deny)) {
 			allows.clear();
 			deny.clear();
@@ -41,7 +41,8 @@ DWORD Policy::GetFlag(std::wstring Flag) {
 	return flagValue;
 }
 
-VOID Policy::FreeAll(std::vector<PolicyEntry*> allows, std::vector<PolicyEntry*> deny){
+VOID Policy::FreeAll(std::vector<PolicyEntry*> allows, std::vector<PolicyEntry*> deny)
+{
 	for (unsigned int i = 0; i < allows.size(); i++) {
 		GlobalFree(allows[i]);
 	}
@@ -52,7 +53,8 @@ VOID Policy::FreeAll(std::vector<PolicyEntry*> allows, std::vector<PolicyEntry*>
 	deny.clear();
 }
 
-BOOL Policy::ParseLine(std::wstring line, std::vector<PolicyEntry*> allows, std::vector<PolicyEntry*> deny) {
+BOOL Policy::ParseLine(std::wstring line, std::vector<PolicyEntry*> allows, std::vector<PolicyEntry*> deny)
+{
 	if (line.size() < 2 || line.at(1) != L':'){
 		SetLastError(ERROR_EMPTY);
 		return FALSE;
@@ -85,12 +87,11 @@ BOOL Policy::ParseLine(std::wstring line, std::vector<PolicyEntry*> allows, std:
 
 BOOL Policy::HaveAccessToFile(PWCHAR file, DWORD dwDesiredAccess, DWORD dwShareMode, DWORD dwFlagsAndAttributes)
 {
-	return TRUE;
 	using namespace std;
 	for (unsigned int i = 0; i < deny.size(); i++) {
 		wsmatch match;
 		wregex wrx(deny.at(i)->path);
-		if (std::regex_match(file,wrx, std::regex_constants::match_default)) {
+		if (regex_match(file,wrx, regex_constants::match_default)) {
 			if (deny.at(i)->flags == dwDesiredAccess) {
 				SetLastError(ERROR_ACCESS_DENIED);
 				return FALSE;
@@ -100,7 +101,7 @@ BOOL Policy::HaveAccessToFile(PWCHAR file, DWORD dwDesiredAccess, DWORD dwShareM
 	for (unsigned int i = 0; i < allows.size(); i++) {
 		wsmatch match;
 		wregex wrx(allows.at(i)->path);
-		if (std::regex_match(file, wrx, std::regex_constants::match_default)) {
+		if (regex_match(file, wrx, regex_constants::match_default)) {
 			if (allows.at(i)->flags == dwDesiredAccess) {
 				return TRUE;
 			}
@@ -110,12 +111,11 @@ BOOL Policy::HaveAccessToFile(PWCHAR file, DWORD dwDesiredAccess, DWORD dwShareM
 }
 
 BOOL Policy::HaveAccessToDirectory(PWCHAR dirrectory) {
-	return TRUE;
 	using namespace std;
 	for (unsigned int i = 0; i < deny.size(); i++) {
 		wsmatch match;
 		wregex wrx(deny.at(i)->path);
-		if (std::regex_match(dirrectory, wrx, std::regex_constants::match_default)) {
+		if (regex_match(dirrectory, wrx, regex_constants::match_default)) {
 			SetLastError(ERROR_ACCESS_DENIED);
 			return FALSE;
 		}
@@ -123,7 +123,7 @@ BOOL Policy::HaveAccessToDirectory(PWCHAR dirrectory) {
 	for (unsigned int i = 0; i < allows.size(); i++) {
 		wsmatch match;
 		wregex wrx(allows.at(i)->path);
-		if (std::regex_match(dirrectory, wrx, std::regex_constants::match_default)) {
+		if (regex_match(dirrectory, wrx, regex_constants::match_default)) {
 			return TRUE;
 		}
 	}

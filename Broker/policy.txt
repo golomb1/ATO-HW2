@@ -1,0 +1,1 @@
+A:GENERIC_READ|GENERIC_WRITE:C:\Users\tomer\Source\Repos\ATO-HW2\*

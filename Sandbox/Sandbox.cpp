@@ -50,55 +50,49 @@ VOID HandleError(HANDLE out, const wchar_t* message, DWORD error) {
 	wchar_t errorMessage[ERROR_BUFFER];
 	ZeroMemory(errorMessage, ERROR_BUFFER * sizeof(wchar_t));
 	swprintf_s(errorMessage, L"%s - %d\n", message, error);
-	OutputDebugString(errorMessage);
-	WriteFile(out, errorMessage, wcslen(errorMessage), NULL, NULL);
+	//OutputDebugString(errorMessage);
+	WriteFile(out, errorMessage, wcslen(errorMessage) * sizeof(WCHAR), nullptr, nullptr);
 	ExitProcess(EXIT_FAILURE);
 }
 
 
 VOID Print(HANDLE out, LPCTSTR message) {
-	WriteFile(out, message, wcslen(message) * sizeof(WCHAR), NULL, NULL);
+	WriteFile(out, message, wcslen(message) * sizeof(WCHAR), nullptr, nullptr);
 }
 
-BOOL CreateDirTest(HANDLE out, CreateDirFunc createDir, wchar_t* argv[]) {
-	if (createDir(argv[IPC_TEST_START_INDEX + IPC_TEST_CREATE_DIR], NULL)) {
+BOOL CreateDirTest(HANDLE out, CreateDirFunc createDir, wchar_t* dirName) {
+	if (createDir(dirName, nullptr)) {
 		Print(out, L"Create Dir Success.\n");
 		return TRUE;
 	}
 	HandleError(out, L"Create Dir FAILED.\n", GetLastError());
 	ExitProcess(EXIT_FAILURE);
-	return FALSE;
 }
 
-BOOL CreateFileTest(HANDLE out, CreateFileFunc createFile, wchar_t* argv[]) {
-	HANDLE file = createFile(argv[IPC_TEST_START_INDEX+ IPC_TEST_CREATE_FILE], 
-		GENERIC_READ, NULL, NULL, OPEN_ALWAYS, NULL, NULL);
+BOOL CreateFileTest(HANDLE out, CreateFileFunc createFile, wchar_t* fileName) {
+	HANDLE file = createFile(fileName,
+		GENERIC_WRITE, NULL, nullptr, OPEN_ALWAYS, NULL, nullptr);
 	if (file != INVALID_HANDLE_VALUE) {
 		DWORD readed = 0;
 		WCHAR character= L'a';
-		if (ReadFile(file, &character, sizeof(WCHAR), &readed, NULL) && readed == sizeof(WCHAR)) {
+		if (WriteFile(file, &character, sizeof(WCHAR), &readed, nullptr) && readed == sizeof(WCHAR)) {
 			Print(out, L"Create File Success.\n");
 			return TRUE;
 		}
 	}
 	HandleError(out, L"Create File FAILED.\n", GetLastError());
 	ExitProcess(EXIT_FAILURE);
-	return FALSE;
 }
 
 	
-BOOL IPCTests(HANDLE out, FARPROC* SandBoxAPI, int argc, wchar_t* argv[]) {
-	if (argc < IPC_TEST_ARG_LENGTH + IPC_TEST_START_INDEX || SandBoxAPI == NULL) {
-		Print(out, L"Not enought arguments for IPC Tests");
-		ExitProcess(EXIT_FAILURE);
-	}
+BOOL IPCTests(HANDLE out, FARPROC* SandBoxAPI) {
 	/// Create File tests
 	CreateFileFunc createFile = (CreateFileFunc)SandBoxAPI[CREATEFILE];
-	CreateFileTest(out, createFile, argv);
+	CreateFileTest(out, createFile, L".\\TestFile.txt");
 
 	/// Create directory tests
 	CreateDirFunc createDir = (CreateDirFunc)SandBoxAPI[CREATEDIR];
-	CreateDirTest(out, createDir, argv);
+	CreateDirTest(out, createDir, L".\\TestDir");
 
 	/// Create input tests
 	InputFunc input = (InputFunc)SandBoxAPI[INPUT];
@@ -112,37 +106,43 @@ BOOL IPCTests(HANDLE out, FARPROC* SandBoxAPI, int argc, wchar_t* argv[]) {
 	OutputFunc outputf = (OutputFunc)SandBoxAPI[3];
 	if (!outputf(buffer)) {
 		Print(out, L"Output test failed.\n");
-		ExitProcess(EXIT_FAILURE);
 	}
 	return TRUE;
 }
 
-BOOL TempFolderTest(HANDLE out, LPTSTR lpFolderPath)
+HANDLE TempFolderTest(LPTSTR lpFolderPath)
 {
 	WCHAR buffer[512];
 	ZeroMemory(buffer, 512);
 	swprintf_s(buffer, L"%s\\tmp.txt", lpFolderPath);
-	HANDLE file = CreateFile(buffer, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_ALWAYS, NULL, NULL);
+	HANDLE file = CreateFile(buffer, GENERIC_READ | GENERIC_WRITE, NULL, nullptr, OPEN_ALWAYS, NULL, nullptr);
 	if(file == INVALID_HANDLE_VALUE)
 	{
-		Print(out, L"Temp folder test failed - could not create.\n");
+		//Print(L"Temp folder test failed - could not create.\n");
 		ExitProcess(EXIT_FAILURE);
 	}
 	CloseHandle(file);
 	if(!DeleteFile(buffer))
 	{
-		Print(out, L"Temp folder test failed - could not delete.\n");
+		//Print(out, L"Temp folder test failed - could not delete.\n");
 		ExitProcess(EXIT_FAILURE);
 	}
-	Print(out, L"Temp folder test successed.\n");
-	return TRUE;
+	//Print(out, L"Temp folder test successed.\n");
+	swprintf_s(buffer, L"%s\\test_result.txt", lpFolderPath); 
+	file = CreateFile(buffer, GENERIC_READ | GENERIC_WRITE, NULL, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+	if (file == INVALID_HANDLE_VALUE)
+	{
+		//Print(L"Temp folder test failed - could not create.\n");
+		ExitProcess(EXIT_FAILURE);
+	}
+	return file;
 }
 
 
 BOOL InvalidCreateFileTest(HANDLE out, LPTSTR FileName)
 {
 	SetLastError(0);
-	HANDLE test1 = CreateFile(FileName, GENERIC_READ, NULL, NULL, CREATE_ALWAYS, NULL, NULL);
+	HANDLE test1 = CreateFile(FileName, GENERIC_READ, NULL, nullptr, CREATE_ALWAYS, NULL, nullptr);
 	if (test1 == INVALID_HANDLE_VALUE && GetLastError() == ERROR_ACCESS_DENIED) {
 		Print(out, L"Invalid create file test - SUCCESSED.\n");
 	}
@@ -157,7 +157,7 @@ BOOL InvalidCreateFileTest(HANDLE out, LPTSTR FileName)
 BOOL InvalidCreateWindowsTest(HANDLE out)
 {
 	SetLastError(0);
-	if (!(!MessageBox(NULL, NULL, NULL, MB_OK) && GetLastError() == ERROR_ACCESS_DENIED))
+	if (!(!MessageBox(nullptr, nullptr, nullptr, MB_OK) && GetLastError() == ERROR_ACCESS_DENIED))
 	{
 		Print(out, L"Invalied creating windows - FAILED.\n");
 		ExitProcess(EXIT_FAILURE);
@@ -179,7 +179,7 @@ BOOL InvalidClipboardTests(HANDLE out)
 	}
 
 	SetLastError(0);
-	if (!SetClipboardData(CF_TEXT, NULL) && GetLastError() == ERROR_ACCESS_DENIED) {
+	if (!SetClipboardData(CF_TEXT, nullptr) && GetLastError() == ERROR_ACCESS_DENIED) {
 		Print(out, L"Invalied Clipboard Test : Write - SUCCESSED.\n");
 	}
 	else {
@@ -194,7 +194,7 @@ BOOL InvalidMouseTest(HANDLE out, OutputFunc outFunc, InputFunc inFunc)
 {
 	SetLastError(0);
 	SetCursorPos(50, 50);
-	outFunc(L"Test Mouse - did the mouse moved to (50,50)? Y/N");
+	outFunc(L"Test mouse - did the mouse moved to (50,50)? Y or N\n");
 	WCHAR buffer[20];
 	if (inFunc(buffer, 20 * sizeof(WCHAR)) && buffer[0] == L'Y') {
 		Print(out, L"Invalid Mouse Test - SUCCESSED.\n");
@@ -202,6 +202,7 @@ BOOL InvalidMouseTest(HANDLE out, OutputFunc outFunc, InputFunc inFunc)
 	else
 	{
 		Print(out, L"Invalid Mouse Test - FAILED.\n");
+		
 	}
 	return TRUE;
 }
@@ -229,18 +230,18 @@ BOOL SBTEST(HANDLE out, OutputFunc outFunc, InputFunc inFunc)
 
 int _tmain(int argc, wchar_t* argv[])
 {
-	if (argc < 3) {
+	if (argc < 2) {
 		ExitProcess(EXIT_FAILURE);
 	}
-	HANDLE out;
-	swscanf_s(argv[2], L"%p", &out);
+	//HANDLE out;
+	//swscanf_s(argv[2], L"%p", &out);
 
 	///***************************************************************///
 	///						Start IPC Tests
 	///***************************************************************///
 	HMODULE sandboxAPI = GetModuleHandle(L"SandboxDLL.dll");
-	if (sandboxAPI == 0) {
-		Print(out, L"Could not get sanbox api.\n");
+	if (sandboxAPI == nullptr) {
+		//Print(out, L"Could not get sanbox api.\n");
 		ExitProcess(EXIT_FAILURE);
 	}
 
@@ -250,8 +251,13 @@ int _tmain(int argc, wchar_t* argv[])
 	SandBoxAPI[INPUT]      = GetProcAddress(sandboxAPI, "SBHandleInput");
 	SandBoxAPI[OUTPUT]     = GetProcAddress(sandboxAPI, "SBHandleOutput");
 
-	IPCTests(out, SandBoxAPI, argc, argv);
-	TempFolderTest(out, argv[1]);
+	HANDLE out = TempFolderTest(argv[1]);
+	IPCTests(out, SandBoxAPI);
 	SBTEST(out,(OutputFunc)SandBoxAPI[OUTPUT], (InputFunc)SandBoxAPI[INPUT]);
 	((OutputFunc)SandBoxAPI[OUTPUT])(L"ALL FINISHED!");
+	CloseHandle(out);
+	WCHAR buffer[512];
+	ZeroMemory(buffer, 512);
+	swprintf_s(buffer, L"%s\\test_result.txt", argv[1]);
+	DeleteFile(buffer);
 }

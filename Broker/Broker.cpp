@@ -3,18 +3,16 @@
 #include "stdafx.h"
 #include <windows.h>
 #include <stdio.h>
-#include <assert.h>
 #include <Sddl.h>
 #include <aclapi.h>
 #include <stdlib.h>
 #include <string>
 #include <iostream>
 #include "RestrictedProcess.h"
-#include <malloc.h>
 #include "PipeIPC.h"
 #include "RequestHandler.h"
 #include "Policy.h"
-
+#include "cmdline.h"
 
 
 typedef struct {
@@ -22,9 +20,14 @@ typedef struct {
 	Policy*				pPolicy;
 } IPCData;
 
-#define			NUM_OF_INHERITED_HANDLES	3
 #define			MAX_DESKTOP_NAME_SIZE		256
 #define			TEMP_DIRECTORY_PATH_LENGTH	1024
+
+#define			TEMP_FOLDER_ARG_ID			1
+#define			INPUT_ARG_ID				2
+#define			OUTPUT_ARG_ID				3
+#define			POLICY_ARG_ID				4
+#define			TO_RUN_ARG_ID				5
 
 ///************************************************************///
 ///						Broker API operations
@@ -47,18 +50,18 @@ PVOID BrokerLowerPrivilege(__in PVOID Data, __in PBYTE request, __in DWORD lentg
 PVOID BrokerCreateFile(__in PVOID Data, __in PBYTE request, __in DWORD lentgh, __out PDWORD size) {
 	IPCData* ipcData = (IPCData*)Data;
 	PHANDLE file1 = (PHANDLE)GlobalAlloc(GPTR, sizeof(HANDLE));
-	(*file1) = INVALID_HANDLE_VALUE;
+	*file1 = INVALID_HANDLE_VALUE;
 	if (lentgh >= sizeof(CreateFileRequest)) {
 
 		/// Read parameters
 		CreateFileRequest* requestHeader = (CreateFileRequest*)request;
 		if (lentgh >= sizeof(CreateFileRequest) + requestHeader->NameLength + requestHeader->lpSecurityAttributesLength) {
 			wchar_t* name = new wchar_t[requestHeader->NameLength];
-			ZeroMemory(name, sizeof(name));
+			ZeroMemory(name, sizeof name);
 			wcscpy_s(name, requestHeader->NameLength, (wchar_t*)(request + sizeof(CreateFileRequest)));
 
 			/// Create the relevant security attribute.
-			PBYTE sa = NULL;
+			PBYTE sa = nullptr;
 			if (requestHeader->lpSecurityAttributesLength > 0) {
 				sa = new byte[requestHeader->lpSecurityAttributesLength];
 				memcpy_s(&sa,
@@ -67,12 +70,12 @@ PVOID BrokerCreateFile(__in PVOID Data, __in PBYTE request, __in DWORD lentgh, _
 					requestHeader->lpSecurityAttributesLength);
 			}
 
-			if (!((ipcData->pPolicy)->HaveAccessToFile(
+			if (!ipcData->pPolicy->HaveAccessToFile(
 				name, requestHeader->dwDesiredAccess,
-				requestHeader->dwShareMode, requestHeader->dwFlagsAndAttributes)))
+				requestHeader->dwShareMode, requestHeader->dwFlagsAndAttributes))
 			{
 				SetLastError(ERROR_ACCESS_DENIED);
-				(*file1) = INVALID_HANDLE_VALUE;
+				*file1 = INVALID_HANDLE_VALUE;
 			}
 			else {
 				/// Create the file
@@ -90,10 +93,10 @@ PVOID BrokerCreateFile(__in PVOID Data, __in PBYTE request, __in DWORD lentgh, _
 				HANDLE prd = OpenProcess(PROCESS_DUP_HANDLE, FALSE, ipcData->ChildProcInfo.dwProcessId);
 				if (!DuplicateHandle(prs, file, prd, &duplicateHandle, 0, TRUE, DUPLICATE_SAME_ACCESS)) {
 					OutputDebugString(L"Could not duplicate the handle to sandbox.");
-					(*file1) = INVALID_HANDLE_VALUE;
+					*file1 = INVALID_HANDLE_VALUE;
 				}
 				else {
-					(*file1) = duplicateHandle;
+					*file1 = duplicateHandle;
 				}
 			}
 		}
@@ -104,7 +107,7 @@ PVOID BrokerCreateFile(__in PVOID Data, __in PBYTE request, __in DWORD lentgh, _
 	else {
 		SetLastError(ERROR_INVALID_PARAMETER);
 	}
-	(*size) = sizeof(HANDLE);
+	*size = sizeof(HANDLE);
 	return file1;
 }
 
@@ -117,11 +120,11 @@ PVOID BrokerCreateDirectory(__in PVOID Data, __in PBYTE request, __in DWORD lent
 		CreateDirectoryRequest* requestHeader = (CreateDirectoryRequest*)request;
 		if (lentgh >= sizeof(CreateDirectoryRequest) + requestHeader->NameLength + requestHeader->lpSecurityAttributesLength) {
 			PWCHAR name = new WCHAR[requestHeader->NameLength];
-			ZeroMemory(name, sizeof(name));
+			ZeroMemory(name, sizeof name);
 			wcscpy_s(name, requestHeader->NameLength, (PWCHAR)(request + sizeof(CreateDirectoryRequest)));
 
 			/// Create the relevant security attribute.
-			PBYTE sa = NULL;
+			PBYTE sa = nullptr;
 			if (requestHeader->lpSecurityAttributesLength > 0) {
 				sa = new byte[requestHeader->lpSecurityAttributesLength];
 				memcpy_s(&sa,
@@ -132,7 +135,7 @@ PVOID BrokerCreateDirectory(__in PVOID Data, __in PBYTE request, __in DWORD lent
 
 			/// Create the file
 
-			if ((ipcData->pPolicy)->HaveAccessToDirectory(name)) {
+			if (ipcData->pPolicy->HaveAccessToDirectory(name)) {
 				result = CreateDirectory(name, (LPSECURITY_ATTRIBUTES)sa);
 			}
 			else {
@@ -148,32 +151,34 @@ PVOID BrokerCreateDirectory(__in PVOID Data, __in PBYTE request, __in DWORD lent
 	}
 	/// Allocate the duplicate handle for the child and return it.
 	PBOOL retResult = (PBOOL)GlobalAlloc(GPTR, sizeof(BOOL));
-	(*retResult) = result;
-	(*size) = sizeof(HANDLE);
+	*retResult = result;
+	*size = sizeof(HANDLE);
 	return retResult;
 }
 
 
 PVOID BrokerHandleInput(__in PVOID Data, __in PBYTE request, __in DWORD lentgh, __out PDWORD size) {
 	using namespace std;
-	IPCData* ipcData = (IPCData*)Data;
 	if (lentgh >= sizeof(DWORD)) {
-		DWORD inputSize = *((PDWORD)request);
+		DWORD inputSize = *(PDWORD)request;
 		PWCHAR result = (PWCHAR)GlobalAlloc(GPTR, inputSize);
 		ZeroMemory(result, inputSize);
 		printf("Sandbox ask for input: ");
-		std::wcin.get(result, inputSize);
-		*size = (wcslen(result) + 1)*sizeof(WCHAR);
+		*size = 2;
+		while (*size == 2) {
+			wcin.get(result, inputSize);
+			cin.ignore();
+			*size = (wcslen(result) + 1) * sizeof(WCHAR);
+		}
 		return result;
 	}
 	*size = 0;
-	return NULL;
+	return nullptr;
 }
 
 
 
 PVOID BrokerHandleOutput(__in PVOID Data, __in PBYTE request, __in DWORD lentgh, __out PDWORD size) {
-	IPCData* ipcData = (IPCData*)Data;
 	wprintf(L"Sandbox Said: %s\n", (PWCHAR)request);
 	PBOOL result = (PBOOL)GlobalAlloc(GPTR, sizeof(BOOL));
 	*result = TRUE;
@@ -183,11 +188,25 @@ PVOID BrokerHandleOutput(__in PVOID Data, __in PBYTE request, __in DWORD lentgh,
 
 
 ///************************************************************///
-///						Main
+///						Broker
 ///************************************************************///
 
-int _tmain(int argc, wchar_t* argv[])
+DWORD WINAPI HandleSandboxMessages(_In_ LPVOID lpParameter)
 {
+	DWORD processExitCode = 0;
+	LPVOID* lpP = (LPVOID*)lpParameter;
+	IPCData* DataForIPC = (IPCData*)lpP[0];
+	RequestHandler* ipc = (RequestHandler*)lpP[1];
+	GetExitCodeProcess(DataForIPC->ChildProcInfo.hProcess, &processExitCode);
+	while (processExitCode == STILL_ACTIVE) {
+		ipc->HandleMessage();
+		GetExitCodeProcess(DataForIPC->ChildProcInfo.hProcess, &processExitCode);
+	}
+	return EXIT_SUCCESS;
+}
+
+
+DWORD StartBroker(LPWSTR tempDir, LPWSTR policyPath, LPWSTR targetPath, LPWSTR targetArgs, HANDLE in, HANDLE out) {
 	/// Initilize pipes for IPC
 	HANDLE ParentReadHandle, ChildWriteHandle;
 	HANDLE ChildReadHandle, ParentWriteHandle;
@@ -195,91 +214,104 @@ int _tmain(int argc, wchar_t* argv[])
 	SECURITY_ATTRIBUTES sa;
 	ZeroMemory(&sa, sizeof(SECURITY_ATTRIBUTES));
 	sa.bInheritHandle = TRUE;
-	sa.nLength = sizeof(sa);
+	sa.nLength = sizeof sa;
 
-	if (!CreatePipe(&ParentReadHandle, &ChildWriteHandle , &sa, MAX_PIPE_MESSAGE) || 
-		!CreatePipe(&ChildReadHandle , &ParentWriteHandle, &sa, MAX_PIPE_MESSAGE)) {
+	if (!CreatePipe(&ParentReadHandle, &ChildWriteHandle, &sa, MAX_PIPE_MESSAGE) ||
+		!CreatePipe(&ChildReadHandle, &ParentWriteHandle, &sa, MAX_PIPE_MESSAGE)) {
 		printf("Could not create pipes for IPC, error was: %d.\nExiting...", GetLastError());
-		ExitProcess(EXIT_FAILURE);
+		return EXIT_FAILURE;
 	}
 
 
 	IPCData DataForIPC;
 	ZeroMemory(&DataForIPC, sizeof(IPCData));
 	RequestHandler ipc(&DataForIPC, ParentReadHandle, ParentWriteHandle);
-	ipc.SetHandler(NOTIFY_PROCESS_INITLIZATION_COMPLETE	, BrokerLowerPrivilege);
-	ipc.SetHandler(CREATE_FILE_REQUEST_TYPE				, BrokerCreateFile);
-	ipc.SetHandler(CREATE_DIRECTORY_REQUEST_TYPE		, BrokerCreateDirectory);
-	ipc.SetHandler(HANDLE_INPUT_REQUEST					, BrokerHandleInput);
-	ipc.SetHandler(HANDLE_OUTPUT_REQUEST				, BrokerHandleOutput);
-
+	ipc.SetHandler(NOTIFY_PROCESS_INITLIZATION_COMPLETE, BrokerLowerPrivilege);
+	ipc.SetHandler(CREATE_FILE_REQUEST_TYPE, BrokerCreateFile);
+	ipc.SetHandler(CREATE_DIRECTORY_REQUEST_TYPE, BrokerCreateDirectory);
+	ipc.SetHandler(HANDLE_INPUT_REQUEST, BrokerHandleInput);
+	ipc.SetHandler(HANDLE_OUTPUT_REQUEST, BrokerHandleOutput);
 
 
 	/// Create untrusted directory
 	WCHAR TempDirectory[TEMP_DIRECTORY_PATH_LENGTH];
 	ZeroMemory(TempDirectory, TEMP_DIRECTORY_PATH_LENGTH * sizeof(WCHAR));
-	
-	DWORD TempDirectoryLength = GetFullPathName(argv[2],
-		TEMP_DIRECTORY_PATH_LENGTH, TempDirectory, NULL);
+
+	DWORD TempDirectoryLength;
+	if (tempDir != nullptr) {
+		TempDirectoryLength = GetFullPathName(tempDir,
+			TEMP_DIRECTORY_PATH_LENGTH, TempDirectory, nullptr);
+	}
+	else
+	{
+		printf("Could not Find the path for the given sandbox directory, got null.\nExiting...");
+		return EXIT_FAILURE;
+	}
 	if (TempDirectoryLength == 0)
 	{
 		printf("Could not Find the full path for the given sandbox directory, error was: %d.\nExiting...", GetLastError());
-		ExitProcess(EXIT_FAILURE);
+		return EXIT_FAILURE;
 	}
 	CreateUntrustedFolder(TempDirectory);
-	/*if (!) {
-		printf("Could not create folder for sandbox, error was: %d.\nExiting...", GetLastError());
-		ExitProcess(EXIT_FAILURE);
-	}*/
 
 	/// Read Policy file
 	DataForIPC.pPolicy = new Policy();
-	DataForIPC.pPolicy->ParsePolicyFile(argv[3]);
+	DataForIPC.pPolicy->ParsePolicyFile(policyPath);
 
-	HANDLE InitilizationToken	= NULL;
-	HANDLE PrimaryToken			= NULL;
-	HANDLE impersonation_token  = NULL;
+	HANDLE impersonation_token = nullptr;
 
 	WCHAR  AppPath[1024];
-	PWCHAR CmdLine;
 	WCHAR  CmdLineBuf[1024];
-	
+
 	SECURITY_ATTRIBUTES outSa;
 	ZeroMemory(&outSa, sizeof(SECURITY_ATTRIBUTES));
 	outSa.bInheritHandle = TRUE;
-	outSa.nLength = sizeof(outSa);
-	HANDLE out = CreateFile(L"test_out", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &outSa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	outSa.nLength = sizeof outSa;
 	/// Create the process command line
-	/// TODO
-	if (_snwprintf_s(CmdLineBuf, 1023, L"\"%s\" %s %p %s %s 0", argv[1], TempDirectory, out, L"T.txt", L"T") < 0)
+	if (_snwprintf_s(CmdLineBuf, 1023, L"\"%s\" \"%s\" %s", targetPath, TempDirectory, targetArgs) < 0)
 	{
 		printf("Command line argument too long, Error was: %d\nExiting...", GetLastError());
 		RemoveDirectory(TempDirectory);
 		delete DataForIPC.pPolicy;
-		ExitProcess(EXIT_FAILURE);
+		return EXIT_FAILURE;
 	}
 	CmdLineBuf[1023] = '\0';
-	CmdLine = CmdLineBuf;
-	wcscpy_s(AppPath, argv[1]);
+	PWCHAR CmdLine = CmdLineBuf;
+	wcscpy_s(AppPath, targetPath);
 
-	PrimaryToken = RestrictProcessToken(TRUE);
-	InitilizationToken = RestrictProcessToken(FALSE);
-	HANDLE inheritanceHandles[NUM_OF_INHERITED_HANDLES];
+	HANDLE PrimaryToken = RestrictProcessToken(TRUE);
+	HANDLE InitilizationToken = RestrictProcessToken(FALSE);
+
+	DWORD numOfInheritanceHandles = 2;
+	if (in != INVALID_HANDLE_VALUE) {
+		numOfInheritanceHandles++;
+	}
+	if (out != INVALID_HANDLE_VALUE) {
+		numOfInheritanceHandles++;
+	}
+	HANDLE* inheritanceHandles = new HANDLE[numOfInheritanceHandles];
 	inheritanceHandles[0] = ChildReadHandle;
 	inheritanceHandles[1] = ChildWriteHandle;
-	inheritanceHandles[2] = out;
-	
+	DWORD index = 2;
+	if (in != INVALID_HANDLE_VALUE) {
+		inheritanceHandles[index] = in;
+		index++;
+	}
+	if (out != INVALID_HANDLE_VALUE) {
+		inheritanceHandles[index] = out;
+	}
+
 	if (PrimaryToken == INVALID_HANDLE_VALUE) {
 		printf("Could not create primary token, Error was: %d\nExiting...", GetLastError());
 		RemoveDirectory(TempDirectory);
 		delete DataForIPC.pPolicy;
-		ExitProcess(EXIT_FAILURE);
+		return EXIT_FAILURE;
 	}
-	if (InitilizationToken == INVALID_HANDLE_VALUE || 
+	if (InitilizationToken == INVALID_HANDLE_VALUE ||
 		!DuplicateToken(InitilizationToken, SecurityImpersonation, &impersonation_token)) {
 		printf("Could not create Initilization token, Error was: %d\nExiting...", GetLastError());
 		RemoveDirectory(TempDirectory);
-		ExitProcess(EXIT_FAILURE);
+		return EXIT_FAILURE;
 	}
 
 	/// Generate parameter names:
@@ -289,7 +321,7 @@ int _tmain(int argc, wchar_t* argv[])
 
 	DataToChild data;
 	ZeroMemory(&data, sizeof(DataToChild));
-	data.read  = ChildReadHandle;
+	data.read = ChildReadHandle;
 	data.write = ChildWriteHandle;
 
 	/// Generate dll hook functions
@@ -306,24 +338,100 @@ int _tmain(int argc, wchar_t* argv[])
 	SetParam.FunctionIsOrdinal = TRUE;
 
 
-	if(!CreateRestrictedProcess(
-			PrimaryToken, impersonation_token, DesktopName, NUM_OF_INHERITED_HANDLES, 
-			inheritanceHandles, AppPath, CmdLine, TempDirectory, L"C:\\SandboxDLL.dll", sizeof(WCHAR)*wcslen(L"C:\\SandboxDLL.dll"),
-		Entry, SetParam, data, &(DataForIPC.ChildProcInfo)))
+	if (!CreateRestrictedProcess(
+		PrimaryToken, impersonation_token, DesktopName, numOfInheritanceHandles,
+		inheritanceHandles, in ,out, AppPath, CmdLine, TempDirectory, L"C:\\SandboxDLL.dll", sizeof(WCHAR)*wcslen(L"C:\\SandboxDLL.dll"),
+		Entry, SetParam, data, &DataForIPC.ChildProcInfo))
 	{
-		printf("Created restricted process failed %d\n", GetLastError()); 
+		printf("Created restricted process failed %d\n", GetLastError());
 		RemoveDirectory(TempDirectory);
 		delete DataForIPC.pPolicy;
-		ExitProcess(EXIT_FAILURE);
+		return EXIT_FAILURE;
 	}
 
-	DWORD processExitCode = 0;
-	GetExitCodeProcess(DataForIPC.ChildProcInfo.hProcess, &processExitCode);
-	while (processExitCode == STILL_ACTIVE) {
-		ipc.HandleMessage();
-		GetExitCodeProcess(DataForIPC.ChildProcInfo.hProcess, &processExitCode);
-	}
+	LPVOID param[2];
+	param[0] = &DataForIPC;
+	param[1] = &ipc;
+	CreateThread(nullptr, 0, HandleSandboxMessages, param, 0, nullptr);
+	
+	WaitForSingleObject(DataForIPC.ChildProcInfo.hProcess, INFINITE);
+	
 	RemoveDirectory(TempDirectory);
 	delete DataForIPC.pPolicy;
-	ExitProcess(EXIT_SUCCESS);
+	return EXIT_SUCCESS;
+}
+
+
+
+
+///************************************************************///
+///						Main
+///************************************************************///
+
+int _tmain(int argc, wchar_t* argv[])
+{
+	cmdline parser(argv[0], L"Sandbox application");
+	BOOL parserInit = parser.AddOption(POLICY_ARG_ID, wstring(L"-p"), wstring(L"-Policy"), wstring(L"policy_file_path"), wstring(L"- Target policy"), TRUE, FALSE, FALSE);
+	parserInit |= parser.AddOption(TEMP_FOLDER_ARG_ID, wstring(L"-t"), wstring(L"-TEMP-DIR"), wstring(L"temp_dir_path"), wstring(L"- Process Temp folder"), TRUE, FALSE, FALSE);
+	//parserInit |= parser.AddOption(INPUT_ARG_ID, wstring(L"-i"), wstring(L"-Input"), wstring(L"- Sandbox input support"), FALSE, TRUE, FALSE);
+	//parserInit |= parser.AddOption(OUTPUT_ARG_ID, wstring(L"-o"), wstring(L"-Output"), wstring(L"- Sandbox output support"), FALSE, TRUE, FALSE);
+	parserInit |= parser.AddOption(TO_RUN_ARG_ID, wstring(L"-toRun"), wstring(L"-toRrun"), wstring(L"target_path"), wstring(L"- Sandbox target program"), TRUE, FALSE, TRUE);
+	if (!parserInit)
+	{
+		printf("Could not parse command line.\nExiting...");
+		ExitProcess(EXIT_FAILURE);
+	}
+	parser.parse(argc, argv);
+
+
+	LPWSTR policyPath = parser.GetArg(POLICY_ARG_ID);
+	LPWSTR tempPath = parser.GetArg(TEMP_FOLDER_ARG_ID);
+	//BOOL inputFlag = parser.GetArg(INPUT_ARG_ID) != nullptr;
+	//BOOL outputFlag = parser.GetArg(INPUT_ARG_ID) != nullptr;
+	LPWSTR toRun = parser.GetArg(TO_RUN_ARG_ID);
+	DWORD paramIndex = parser.GetArgIndex(TO_RUN_ARG_ID);
+	if(paramIndex == ~0 || paramIndex + 1 > (DWORD)argc)
+	{
+		printf("Could not collect target command line.\nExiting...");
+		ExitProcess(EXIT_FAILURE);
+	}
+	HANDLE in  = INVALID_HANDLE_VALUE;
+	HANDLE out = INVALID_HANDLE_VALUE;
+
+	/*if (inputFlag || outputFlag)
+	{
+		SECURITY_ATTRIBUTES sa;
+		ZeroMemory(&sa, sizeof(SECURITY_ATTRIBUTES));
+		sa.bInheritHandle = TRUE;
+		sa.nLength = sizeof sa;
+		if (!CreatePipe(&in, &out, &sa, MAX_PIPE_MESSAGE)) {
+			printf("Could not create pipes for redirection, error was: %d.\nExiting...", GetLastError());
+			ExitProcess(EXIT_FAILURE);
+		}
+		if (!inputFlag)
+		{
+			CloseHandle(in);
+			in = INVALID_HANDLE_VALUE;
+		}
+		if (!outputFlag)
+		{
+			CloseHandle(out);
+			out = INVALID_HANDLE_VALUE;
+		}
+	}*/
+	
+	
+	wstring target_params(L"");
+	for(int i= paramIndex + 2; i < argc; i++)
+	{
+		target_params.append(argv[i]);
+		target_params.append(L" ");
+	}
+	WCHAR params[1024];
+	ZeroMemory(params , sizeof(WCHAR)*1024);
+	swprintf_s(params, L"%s", target_params.c_str());
+	// create a thread to wait for user command
+	DWORD exit_code = StartBroker(tempPath, policyPath, toRun, params, in, out);
+	system("pause");
+	ExitProcess(exit_code);
 }

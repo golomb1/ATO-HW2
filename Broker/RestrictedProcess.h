@@ -1,12 +1,6 @@
 #pragma once
 #include <windows.h>
-#include <stdio.h>
-#include <assert.h>
-#include <Sddl.h>
-#include <aclapi.h>
-#include "Utils.h"
-#include "ErrorMessage.h"
-#include "RemoteUtils.h"
+
 
 #define RESTRICTED_SID					L"S-1-5-12"
 #define USERS_SID						L"S-1-5-32-545"
@@ -47,12 +41,15 @@ HANDLE CreateRestrictedJobObject();
 ///	To achieve that, the process starts with the initialization token,
 /// and after loading, switch to lower permissions.
 ///</summery>
-///<param name='InitilizationToken'>token for intilization process</param>
+///<param name='InitilizationToken'>token for intilization process
+///</param>
 ///<param name='PrimaryToken'>process's token</param>
 ///<param name='DesktopName'>The desktop name that the process will be executed in, 
 ///				this function create it if it doesn't exist</param>
 ///<param name='NumOfInheritedHandles'>the number of handles to inherited by the restricted process</param>
 ///<param name='InheritedHandles'>handles to inherited by the restricted process</param>
+///<param name='In'>Input redirection</param>
+///<param name='Out'>Output redirection</param>
 ///<param name='AppPath'>the path for the new process executable</param>
 ///<param name='CommandLine'>command line for the new process</param>
 ///<param name='Directory'>The home directory for the process</param>
@@ -68,6 +65,8 @@ BOOL CreateRestrictedProcess(
 	__in		PWCHAR			DesktopName,
 	__in		DWORD			NumOfInheritedHandles,
 	__in_opt	PHANDLE			InheritedHandles,
+	__in_opt	HANDLE			In,
+	__in_opt	HANDLE			Out,
 	__in		PWCHAR			AppPath,
 	__in		PWCHAR			CommandLine,
 	__in		PWCHAR			Directory,
@@ -80,7 +79,7 @@ BOOL CreateRestrictedProcess(
 
 
 ///<summery>Hook the entry point of a process that generated the ProcInfo structure, 
-/// with a function named @param NewEntryName in the dll: @param DllPath.
+/// with a function named @param Entry in the dll: @param DllPath .
 ///</summery>
 ///<param name='ProcInfo'>the process information.</param>
 ///<param name='ChildData'>parameters to send to the dll.</param>
