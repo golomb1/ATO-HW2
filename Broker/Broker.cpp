@@ -29,6 +29,10 @@ typedef struct {
 #define			POLICY_ARG_ID				4
 #define			TO_RUN_ARG_ID				5
 
+#define			DLL_PATC_AT_C				L"C:\\SandboxDLL.dll"
+#define			DLL_PATH					L".\\SandboxDLL.dll"
+
+
 ///************************************************************///
 ///						Broker API operations
 ///************************************************************///
@@ -338,9 +342,17 @@ DWORD StartBroker(LPWSTR tempDir, LPWSTR policyPath, LPWSTR targetPath, LPWSTR t
 	SetParam.FunctionIsOrdinal = TRUE;
 
 
+	if (!CopyFile(DLL_PATH, DLL_PATC_AT_C, FALSE))
+	{
+		printf("Could not set dll at c directory - error %d\n", GetLastError());
+		RemoveDirectory(TempDirectory);
+		delete DataForIPC.pPolicy;
+		return EXIT_FAILURE;
+	}
+
 	if (!CreateRestrictedProcess(
 		PrimaryToken, impersonation_token, DesktopName, numOfInheritanceHandles,
-		inheritanceHandles, in ,out, AppPath, CmdLine, TempDirectory, L"C:\\SandboxDLL.dll", sizeof(WCHAR)*wcslen(L"C:\\SandboxDLL.dll"),
+		inheritanceHandles, in ,out, AppPath, CmdLine, TempDirectory, DLL_PATC_AT_C, sizeof(WCHAR)*wcslen(L"C:\\SandboxDLL.dll"),
 		Entry, SetParam, data, &DataForIPC.ChildProcInfo))
 	{
 		printf("Created restricted process failed %d\n", GetLastError());
