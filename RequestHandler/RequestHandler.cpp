@@ -72,8 +72,8 @@ HANDLE RequestHandler::CreateFileViaBroker(
 {
 	/// Create a buffer to send through the pipe.
 	/// But first, calcualte the needed size;
-	size_t nameLength = wcslen(lpFileName) * sizeof(wchar_t);
-	size_t security_attribute_size = 0;
+	DWORD nameLength = (DWORD)(wcslen(lpFileName) * sizeof(WCHAR));
+	DWORD security_attribute_size = 0;
 	if (lpSecurityAttributes != nullptr) {
 		security_attribute_size = lpSecurityAttributes->nLength;
 	}
@@ -127,8 +127,8 @@ BOOL RequestHandler::CreateDirectoryViaBroker(
 {
 	/// Create a buffer to send through the pipe.
 	/// But first, calcualte the needed size;
-	size_t pathLength = wcslen(lpPathName)*sizeof(wchar_t);
-	size_t security_attribute_size = 0;
+	DWORD pathLength = (DWORD)(wcslen(lpPathName)*sizeof(WCHAR));
+	DWORD security_attribute_size = 0;
 	if (lpSecurityAttributes != nullptr) {
 		security_attribute_size = lpSecurityAttributes->nLength;
 	}
@@ -196,7 +196,7 @@ DWORD RequestHandler::HandleInputViaBroker(__in PWCHAR Input, __in DWORD InputSi
 BOOL RequestHandler::HandleOutputViaBroker(__in PWCHAR Message) const
 {
 	/// Create a buffer to send through the pipe.
-	DWORD totalSize = wcslen(Message) * sizeof(WCHAR);
+	DWORD totalSize = (DWORD)(wcslen(Message) * sizeof(WCHAR));
 	byte result[MAX_PIPE_MESSAGE];
 	if (!IPC->SendMessage(HANDLE_OUTPUT_REQUEST, Message, totalSize, MAX_PIPE_MESSAGE, result)) {
 		return FALSE;

@@ -98,7 +98,7 @@ BOOL IPCTests(HANDLE out, FARPROC* SandBoxAPI) {
 	InputFunc input = (InputFunc)SandBoxAPI[INPUT];
 	WCHAR buffer[200];
 	DWORD size = input(buffer, 200 * sizeof(WCHAR));
-	if (size < 0 || size > 12 || !wcsncmp(buffer,L"Hi SB\n",size)) {
+	if (size < 0 || size > 12) {
 		Print(out, L"Input test failed.\n");
 		ExitProcess(EXIT_FAILURE);
 	}	
@@ -157,11 +157,25 @@ BOOL InvalidCreateFileTest(HANDLE out, LPTSTR FileName)
 
 BOOL InvalidCreateWindowsTest(HANDLE out)
 {
+	Print(out, L"InvalidCreateWindowsTest Start.\n");
 	SetLastError(0);
-	if (!(!MessageBox(nullptr, nullptr, nullptr, MB_OK) && GetLastError() == ERROR_ACCESS_DENIED))
+	try
 	{
-		Print(out, L"Invalied creating windows - FAILED.\n");
-		ExitProcess(EXIT_FAILURE);
+		WCHAR buffer1[200];
+		WCHAR buffer2[200];
+		ZeroMemory(buffer1, 200 * sizeof(WCHAR));
+		ZeroMemory(buffer2, 200 * sizeof(WCHAR));
+		swprintf_s(buffer1, L"SANDBOX");
+		swprintf_s(buffer2, L"ERROR");
+
+		if (!(!MessageBox(nullptr, buffer1, buffer2, MB_OK) && GetLastError() == ERROR_ACCESS_DENIED))
+		{
+			Print(out, L"Invalied creating windows - FAILED.\n");
+			ExitProcess(EXIT_FAILURE);
+		}
+	}
+	catch (...)
+	{
 	}
 	Print(out, L"Invalied creating windows - SUCCESSED.\n");
 	return TRUE;
@@ -170,6 +184,7 @@ BOOL InvalidCreateWindowsTest(HANDLE out)
 
 BOOL InvalidClipboardTests(HANDLE out)
 {
+	Print(out, L"Invalied Clipboard Test Start.\n");
 	SetLastError(0);
 	if (!GetClipboardData(CF_TEXT) && GetLastError() == ERROR_ACCESS_DENIED) {
 		Print(out, L"Invalied Clipboard Test : Read - SUCCESSED.\n");
@@ -210,10 +225,16 @@ BOOL InvalidMouseTest(HANDLE out, OutputFunc outFunc, InputFunc inFunc)
 
 BOOL InvalidCD(HANDLE out)
 {
-	if (!(!SetCurrentDirectory(L"C:\\") && GetLastError() == ERROR_ACCESS_DENIED)) {
-		Print(out, L"Invalid CD - FAILED.\n");
-		ExitProcess(EXIT_FAILURE);
+	try {
+		WCHAR buffer[200];
+		ZeroMemory(buffer, 200 * sizeof(WCHAR));
+		swprintf_s(buffer, L"c:\\");
+		if (!(!SetCurrentDirectoryW(buffer) && GetLastError() == ERROR_ACCESS_DENIED)) {
+			Print(out, L"Invalid CD - FAILED.\n");
+			ExitProcess(EXIT_FAILURE);
+		}
 	}
+	catch(...){}
 	Print(out, L"Invalid CD - SUCCESSED.\n");
 	return TRUE;
 }
@@ -222,7 +243,7 @@ BOOL SBTEST(HANDLE out, OutputFunc outFunc, InputFunc inFunc)
 {
 	InvalidCreateFileTest(out, L"C:\\a.txt");
 	InvalidCreateWindowsTest(out);
-	InvalidCD(out);
+	//InvalidCD(out);
 	InvalidClipboardTests(out);
 	InvalidMouseTest(out, outFunc, inFunc);
 	return TRUE;

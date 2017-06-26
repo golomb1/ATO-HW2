@@ -185,7 +185,8 @@ VOID SandBoxMain() {
 	//	patchIAT(GetModuleHandle(NULL), "Kernel32.dll", "CreateDirectoryW", &HookedCreateDirectoryW, (PVOID*)&createDirectoryW);
 		
 		/// Go to entry
-		((void(*)(void))entry)();
+		((void(*)())entry)();
+		ExitProcess(EXIT_SUCCESS);
 	}
 	else {
 		HandleError(L"Failed to create IPC.", GetLastError());

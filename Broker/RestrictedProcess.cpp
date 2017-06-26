@@ -451,7 +451,6 @@ BOOL CreateRestrictedProcess(
 		CloseHandle(job);
 		return FALSE;
 	}
-	
 	/// Resume the child process.
 	ResumeThread((*ProcInfo).hThread);
 	return TRUE;
